@@ -2,7 +2,59 @@
 import time
 import asyncio
 import httpx
+import json
 from agents.models import APIRequestLog, RequestBatch
+
+def convert_body_json_to_safe_format(body_json) -> str:
+    """
+    Convert JSON body to a flattened, escape-safe format: key=value;key2=value2
+    Handles nested objects and arrays by flattening them with dot notation.
+    """
+    if not body_json:
+        return ""
+    
+    # If it's a string, try to parse it as JSON
+    if isinstance(body_json, str):
+        try:
+            body_json = json.loads(body_json)
+        except (json.JSONDecodeError, ValueError):
+            # If it's not valid JSON, just escape and return as-is
+            return body_json.replace(";", "\\;").replace("=", "\\=")
+    
+    # If it's not a dict, convert to string
+    if not isinstance(body_json, dict):
+        return str(body_json).replace(";", "\\;").replace("=", "\\=")
+    
+    def flatten_dict(d, parent_key='', sep='.'):
+        """Recursively flatten nested dictionaries and lists."""
+        items = []
+        for k, v in d.items():
+            new_key = f"{parent_key}{sep}{k}" if parent_key else k
+            if isinstance(v, dict):
+                items.extend(flatten_dict(v, new_key, sep=sep).items())
+            elif isinstance(v, list):
+                # Convert list to comma-separated values or flatten if list contains dicts
+                if v and isinstance(v[0], dict):
+                    for i, item in enumerate(v):
+                        if isinstance(item, dict):
+                            items.extend(flatten_dict(item, f"{new_key}[{i}]", sep=sep).items())
+                        else:
+                            items.append((f"{new_key}[{i}]", str(item)))
+                else:
+                    items.append((new_key, ",".join(str(x) for x in v)))
+            else:
+                items.append((new_key, str(v)))
+        return dict(items)
+    
+    # Flatten the dictionary
+    flattened = flatten_dict(body_json)
+    
+    result_parts = []
+    for key, value in flattened.items():
+        result_parts.append(f"{key}={value}")
+    
+    return ";".join(result_parts)
+
 
 # Global queue for request batching
 request_queue = asyncio.Queue()
@@ -22,7 +74,7 @@ async def process_batch(batch: list):
             path=req.get("path", ""),
             method=req.get("method", ""),
             user_id=req.get("user"),
-            json_body=str(req.get("body_json", ""))
+            json_body=convert_body_json_to_safe_format(req.get("body_json", ""))
         )
         request_logs.append(log)
 

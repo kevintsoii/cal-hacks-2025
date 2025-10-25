@@ -29,6 +29,9 @@ load_dotenv()
 ASI_API_KEY = os.environ.get("ASI_API_KEY")
 ASI_API_URL = "https://api.asi1.ai/v1/chat/completions"
 
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
+GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
+
 
 agent = Agent(
     name="API Security Orchestrator",
@@ -36,6 +39,7 @@ agent = Agent(
     port=8001,
     #endpoint=["http://localhost:8001/submit"],
     mailbox=True,
+    readme_path="README.md",
     publish_agent_details=True
 )
 
@@ -54,7 +58,7 @@ You are an AI Orchestrator for an API security middleware. Your job is to
 classify incoming API request logs and route them to specialized analysis agents.
 
 You will receive a list of logs in CSV format:
-"ip_address,path,method,user_id,json_body"
+"ip_address,path,method,user_id,json_body_summary,times_received"
 You must classify each log into one of
 three categories: "auth", "search", or "general".
 
@@ -69,33 +73,20 @@ Your response MUST be a single, valid JSON object with three keys:
 full, original log objects that belong to that category. Example:
 {{
     "auth": [
-        "123.45.67.8,/auth/login,POST,abc123,{{}}"
+        "123.45.67.8,/auth/login,POST,abc123,key=value;key2=value2,1"
     ],
     "search": [
-        "123.45.67.8,/api/search,GET,abc123,{{}}"
+        "123.45.67.8,/api/search,GET,abc123,key=value;key2=value2,5"
     ],
     "general": [
-        "123.45.67.8,/api/other,GET,abc123,{{}}"
+        "123.45.67.8,/api/other,GET,abc123,key=value,13"
     ]
 }}
 """
 
-async def handle_batch(ctx: Context, batch: RequestBatch) -> Dict[str, List[Dict]]:
-    """
-    This function handles the classification and routing of a batch of requests.
-    """
-    ctx.logger.info(f"Received batch of {len(batch.requests)} requests. Classifying with ASI:One Mini...")
-
-    # 1. Serialize logs for the prompt
-    # Manually serialize batch as CSV string: header then comma-separated fields per line, no libraries
-    csv_lines = []
-    for req in batch.requests:
-        line = f"{req.ip_address if req.ip_address is not None else ''},{req.path},{req.method},{req.user_id if req.user_id is not None else ''},{req.json_body if req.json_body is not None else '{}'}"
-        csv_lines.append(line)
-    csv_string = "\n".join(csv_lines)
+async def asii_llm_call(csv_string: str) -> dict:
     user_prompt = f"Here are the incoming API request logs in CSV format:\n{csv_string}"
-
-    # 2. Prepare the ASI:One API request
+    
     headers = {
         'Content-Type': 'application/json',
         'Authorization': f'Bearer {ASI_API_KEY}'
@@ -106,22 +97,62 @@ async def handle_batch(ctx: Context, batch: RequestBatch) -> Dict[str, List[Dict
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": user_prompt}
         ],
-        "response_format": {"type": "json_object"},  # Request JSON output
+        "response_format": {"type": "json_object"},
     }
+    
+    response = await http_client.post(ASI_API_URL, headers=headers, json=payload, timeout=30.0)
+    return response.json()
 
-    # 3. Call ASI:One Mini
+
+async def groq_llm_call(csv_string: str) -> dict:
+    user_prompt = f"Here are the incoming API request logs in CSV format:\n{csv_string}"
+    
+    headers = {
+        'Content-Type': 'application/json',
+        'Authorization': f'Bearer {GROQ_API_KEY}'
+    }
+    payload = {
+        "model": "llama-3.1-8b-instant",
+        "messages": [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": user_prompt}
+        ],
+        "response_format": {"type": "json_object"},
+        "temperature": 0
+    }
+    
+    response = await http_client.post(GROQ_API_URL, headers=headers, json=payload, timeout=30.0)
+    return response.json()
+
+
+async def handle_batch(ctx: Context, batch: RequestBatch) -> Dict[str, List[Dict]]:
+    """
+    This function handles the classification and routing of a batch of requests.
+    """
+    ctx.logger.info(f"[ORCHESTRATOR] Received batch of {len(batch.requests)} requests. Classifying with ASI:One Mini...")
+
+    # 1. Serialize logs for the prompt
+    # Manually serialize batch as CSV string: header then comma-separated fields per line, no libraries
+    # Compress duplicate lines and add count
+    line_counts = {}
+    for req in batch.requests:
+        line = f"{req.ip_address if req.ip_address is not None else ''},{req.path},{req.method},{req.user_id if req.user_id is not None else ''},{req.json_body if req.json_body is not None else '{}'}"
+        line_counts[line] = line_counts.get(line, 0) + 1
+    
+    csv_lines = [f"{line},{count}" for line, count in line_counts.items()]
+    csv_string = "\n".join(csv_lines)
+
+    # 2. Call LLM and parse response
     try:
         start_time = time.time()
-        response = await http_client.post(ASI_API_URL, headers=headers, json=payload, timeout=30.0)
-        response.raise_for_status()  # Raise an error for bad responses
-
-        response_data = response.json()
+        response_data = await groq_llm_call(csv_string)
+        
         llm_output_str = response_data['choices'][0]['message']['content']
 
         # Clean the LLM output string to remove markdown code blocks
         llm_output_str = clean_llm_output(llm_output_str)
 
-        # 4. Parse the LLM's JSON response
+        # Parse the LLM's JSON response
         classified_logs = json.loads(llm_output_str)
 
         auth_logs = classified_logs.get("auth", [])
@@ -131,10 +162,9 @@ async def handle_batch(ctx: Context, batch: RequestBatch) -> Dict[str, List[Dict
         end_time = time.time()
         latency = end_time - start_time
         ctx.logger.info(
-            f"ASI:One Mini classified: {len(auth_logs)} auth, {len(search_logs)} search, {len(general_logs)} general in {latency} seconds")
-        
+            f"[ORCHESTRATOR] {len(auth_logs)} auth, {len(search_logs)} search, {len(general_logs)} general in {latency:.2f} seconds")
 
-        # 5. Broadcast tasks to specialists
+        # 3. Broadcast tasks to specialists
         tasks_to_run = []
         # if auth_logs:
         #     # Re-serialize from dicts back into Model objects
@@ -159,26 +189,25 @@ async def handle_batch(ctx: Context, batch: RequestBatch) -> Dict[str, List[Dict
 
         if tasks_to_run:
             await asyncio.gather(*tasks_to_run)
-            ctx.logger.info("All specialized tasks have been broadcasted.")
+            ctx.logger.info("[ORCHESTRATOR] All specialized tasks have been broadcasted.")
 
         return classified_logs
 
     except httpx.RequestError as e:
-        ctx.logger.error(f"HTTP Error calling ASI:One Mini: {e}")
+        ctx.logger.error(f"[ORCHESTRATOR] HTTP Error calling ASI:One Mini: {e}")
         return {"auth": [], "search": [], "general": []}
     except json.JSONDecodeError as e:
-        ctx.logger.error(
-            f"Error parsing JSON from ASI:One Mini: {e}. Response was: {llm_output_str}")
+        ctx.logger.error(f"[ORCHESTRATOR] Error parsing JSON from ASI:One Mini: {e}")
         return {"auth": [], "search": [], "general": []}
     except Exception as e:
-        ctx.logger.error(f"An unexpected error occurred: {e}")
+        ctx.logger.error(f"[ORCHESTRATOR] An unexpected error occurred: {e}")
         return {"auth": [], "search": [], "general": []}
 
 
 
 @agent.on_event("startup")
 async def startup(ctx: Context):
-    ctx.logger.info("Orchestrator online, ASI:One Mini client ready.")
+    ctx.logger.info("[ORCHESTRATOR] Orchestrator online, ASI:One Mini client ready.")
 
 
 @agent.on_rest_post("/rest/post", RequestBatch, OrchestratorResponse)
@@ -209,7 +238,7 @@ async def handle_message(ctx: Context, sender: str, msg: ChatMessage):
         
         # Validate that it has the expected structure
         if isinstance(parsed_data, dict):
-            request_batch = RequestBatch(requests=parsed_data)
+            request_batch = RequestBatch(requests=parsed_data["requests"])
             
             # Fire handle_batch asynchronously in the background
             asyncio.create_task(handle_batch(ctx, request_batch))
