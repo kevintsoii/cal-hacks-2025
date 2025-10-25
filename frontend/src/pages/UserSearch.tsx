@@ -12,12 +12,23 @@ import {
 } from '@/components/ui/table'
 import Navbar from '@/components/Navbar'
 
+interface SearchResult {
+  username: string
+  status: string
+  details: string
+}
+
 export default function UserSearch() {
   const [yourUsername, setYourUsername] = useState('')
   const [usernamesList, setUsernamesList] = useState('')
+  const [results, setResults] = useState<SearchResult[]>([])
+  const [errorMessage, setErrorMessage] = useState('')
+  const [isLoading, setIsLoading] = useState(false)
 
-  const handleSearch = (e: React.FormEvent) => {
+  const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault()
+    setErrorMessage('')
+    setIsLoading(true)
     
     // Split usernames by newline and filter out empty strings
     const usernames = usernamesList
@@ -25,10 +36,40 @@ export default function UserSearch() {
       .map(name => name.trim())
       .filter(name => name.length > 0)
     
-    console.log('Search submitted', { 
-      yourUsername: yourUsername || undefined, 
-      usernames 
-    })
+    if (usernames.length === 0) {
+      setErrorMessage('Please enter at least one username to search')
+      setResults([])
+      setIsLoading(false)
+      return
+    }
+
+    try {
+      const response = await fetch('http://localhost:8000/search', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+          yourUsername: yourUsername || undefined, 
+          usernames 
+        }),
+      })
+
+      const data = await response.json()
+
+      if (data.error) {
+        setErrorMessage(data.error)
+        setResults([])
+      } else if (data.success && data.results) {
+        setResults(data.results)
+        setErrorMessage('')
+      }
+    } catch (error) {
+      setErrorMessage('Failed to connect to the server. Please try again.')
+      setResults([])
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   return (
@@ -86,8 +127,8 @@ export default function UserSearch() {
                 </div>
               </div>
 
-              <Button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700">
-                Search Users
+              <Button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700" disabled={isLoading}>
+                {isLoading ? 'Searching...' : 'Search Users'}
               </Button>
             </form>
           </div>
@@ -104,6 +145,13 @@ export default function UserSearch() {
                 User search results will appear here
               </p>
             </div>
+            
+            {errorMessage && (
+              <div className="rounded-lg bg-red-50 border border-red-200 p-4 mb-4">
+                <p className="text-sm text-red-800">{errorMessage}</p>
+              </div>
+            )}
+
             <div className="border rounded-lg">
               <Table>
                 <TableHeader>
@@ -114,11 +162,30 @@ export default function UserSearch() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  <TableRow>
-                    <TableCell colSpan={3} className="text-center text-gray-500 py-8">
-                      No results yet. Submit a search to see results.
-                    </TableCell>
-                  </TableRow>
+                  {results.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={3} className="text-center text-gray-500 py-8">
+                        No results yet. Submit a search to see results.
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    results.map((result, index) => (
+                      <TableRow key={index}>
+                        <TableCell className="font-medium">{result.username}</TableCell>
+                        <TableCell>
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                            result.status === 'Active' ? 'bg-green-100 text-green-800' :
+                            result.status === 'Inactive' ? 'bg-gray-100 text-gray-800' :
+                            result.status === 'Pending' ? 'bg-yellow-100 text-yellow-800' :
+                            'bg-red-100 text-red-800'
+                          }`}>
+                            {result.status}
+                          </span>
+                        </TableCell>
+                        <TableCell className="text-gray-600">{result.details}</TableCell>
+                      </TableRow>
+                    ))
+                  )}
                 </TableBody>
               </Table>
             </div>

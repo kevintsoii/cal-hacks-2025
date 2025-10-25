@@ -6,10 +6,40 @@ import Navbar from '@/components/Navbar'
 export default function Login() {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
+  const [errorMessage, setErrorMessage] = useState('')
+  const [successMessage, setSuccessMessage] = useState('')
+  const [isLoading, setIsLoading] = useState(false)
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
-    console.log('Login submitted', { username, password })
+    setIsLoading(true)
+
+    try {
+      const response = await fetch('http://localhost:8000/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ username, password }),
+      })
+
+      const data = await response.json()
+
+      if (data.error) {
+        setErrorMessage(data.error)
+        setSuccessMessage('')
+      } else if (data.success) {
+        setSuccessMessage(data.message || 'Login successful!')
+        // Optional: Clear the form
+        setPassword('')
+        setErrorMessage('')
+      }
+    } catch (error) {
+      setErrorMessage('Failed to connect to the server. Please try again.')
+      setSuccessMessage('')
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   return (
@@ -67,8 +97,20 @@ export default function Login() {
               </div>
             </div>
 
-            <Button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700">
-              Sign in
+            {errorMessage && (
+              <div className="rounded-lg bg-red-50 border border-red-200 p-4">
+                <p className="text-sm text-red-800">{errorMessage}</p>
+              </div>
+            )}
+            
+            {successMessage && (
+              <div className="rounded-lg bg-green-50 border border-green-200 p-4">
+                <p className="text-sm text-green-800">{successMessage}</p>
+              </div>
+            )}
+
+            <Button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700" disabled={isLoading}>
+              {isLoading ? 'Signing in...' : 'Sign in'}
             </Button>
           </form>
         </div>
