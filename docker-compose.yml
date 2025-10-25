@@ -8,11 +8,12 @@ services:
     container_name: backend
     ports:
       - "8000:8000"
-      - "8001:8001"
-      - "8002:8002"
-      - "8003:8003"
-      - "8004:8004"
-      - "8005:8005"
+      - "8001:8001"  # Orchestrator Agent
+      - "8002:8002"  # Auth Agent
+      - "8003:8003"  # Search Agent
+      - "8004:8004"  # General Agent
+      - "8006:8006"  # ESQL Query Agent
+      - "8007:8007"  # Chatbot Agent
     volumes:
       - ./backend:/app
     environment:

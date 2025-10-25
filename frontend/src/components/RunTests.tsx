@@ -1,6 +1,7 @@
 import { Button } from '@/components/ui/button'
 import { PlayIcon, CrossCircledIcon } from '@radix-ui/react-icons'
 import { useEffect, useRef } from 'react'
+import type { MutableRefObject } from 'react'
 
 export type RunTestsTestType = 'Authentication' | 'Search'
 
@@ -67,6 +68,7 @@ interface RunTestsProps {
   setCurrentRequest: (request: number | ((prev: number) => number)) => void
   totalRequests: number
   setTotalRequests: (total: number | ((prev: number) => number)) => void
+  wsRef: MutableRefObject<WebSocket | null>
 }
 
 export default function RunTests({
@@ -83,10 +85,10 @@ export default function RunTests({
   currentRequest,
   setCurrentRequest,
   totalRequests,
-  setTotalRequests
+  setTotalRequests,
+  wsRef
 }: RunTestsProps) {
   const logsEndRef = useRef<HTMLDivElement>(null)
-  const wsRef = useRef<WebSocket | null>(null)
 
   const tests = activeTab === 'Authentication' ? authTests : searchTests
 

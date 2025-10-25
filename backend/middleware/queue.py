@@ -109,7 +109,7 @@ async def process_batch(batch: list):
 
 async def queue_processor():
     """
-    Background task that processes the queue every 2 seconds or at 100 requests.
+    Background task that processes the queue every x seconds or at 100 requests.
     """
     batch = []
     last_process_time = time.time()
@@ -126,8 +126,7 @@ async def queue_processor():
             current_time = time.time()
             time_elapsed = current_time - last_process_time
 
-            # Process if batch is full or 2 seconds have passed
-            if len(batch) >= 100 or (len(batch) > 0 and time_elapsed >= 2.0):
+            if len(batch) >= 100 or (len(batch) > 0 and time_elapsed >= 5):
                 asyncio.create_task(process_batch(batch))
                 batch = []
                 last_process_time = current_time

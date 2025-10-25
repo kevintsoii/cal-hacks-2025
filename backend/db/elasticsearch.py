@@ -1,6 +1,10 @@
 from elasticsearch import AsyncElasticsearch
 from typing import Optional, Dict, Any, List
 import os
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 
 class ElasticsearchClient:
