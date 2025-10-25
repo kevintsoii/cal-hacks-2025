@@ -3,7 +3,7 @@ import uvicorn
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from sample import app as samples_app
+from samples import app as samples_app
 from db.redis import redis_client
 from db.elasticsearch import elasticsearch_client
 
@@ -44,6 +44,26 @@ async def ping_elasticsearch():
             return JSONResponse({"status": "ok"})
         else:
             raise HTTPException(status_code=500, detail="Elasticsearch connection failed")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Elasticsearch error: {str(e)}")
+
+@app.get("/elastic/sample")
+async def get_elasticsearch_sample():
+    """
+    Get one sample entry from Elasticsearch.
+    """
+    try:
+        # Search for any document, return just 1
+        results = await elasticsearch_client.search(
+            index_name="api_requests",
+            query={"match_all": {}},
+            size=1
+        )
+        
+        if results:
+            return JSONResponse({"data": results[0], "count": len(results)})
+        else:
+            return JSONResponse({"data": None, "message": "No entries found in Elasticsearch"})
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Elasticsearch error: {str(e)}")
 

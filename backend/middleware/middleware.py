@@ -8,6 +8,21 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 
 from .queue import request_queue, start_queue_processor
+from db.elasticsearch import elasticsearch_client
+
+
+async def send_to_elasticsearch(request_info: dict):
+    """
+    Background task to send request data to Elasticsearch.
+    Non-blocking and fire-and-forget.
+    """
+    try:
+        await elasticsearch_client.index_document(
+            index_name="api_requests",
+            document=request_info
+        )
+    except Exception as e:
+        print(f"Error sending to Elasticsearch: {e}")
 
 
 def sanitize_sensitive_data(data):
@@ -140,5 +155,8 @@ class AIMiddleware(BaseHTTPMiddleware):
         except asyncio.QueueFull:
             # Queue is full, log but don't block the request
             print("Warning: Request queue is full, dropping request info")
+        
+        # Also send to Elasticsearch in background (fire and forget)
+        asyncio.create_task(send_to_elasticsearch(request_info))
 
         return response
