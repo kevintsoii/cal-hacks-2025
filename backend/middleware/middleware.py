@@ -14,16 +14,26 @@ from db.elasticsearch import elasticsearch_client
 from db.redis import redis_client
 
 
-async def send_to_elasticsearch(request_info: dict):
+async def send_to_elasticsearch_and_websocket(request_info: dict):
     """
-    Background task to send request data to Elasticsearch.
+    Background task to send request data to Elasticsearch and broadcast via WebSocket.
     Non-blocking and fire-and-forget.
     """
     try:
+        # Send to Elasticsearch
         await elasticsearch_client.index_document(
             index_name="api_requests",
             document=request_info
         )
+        
+        # Broadcast to WebSocket clients
+        try:
+            # Import here to avoid circular dependency
+            from main import broadcast_new_request
+            await broadcast_new_request(request_info)
+        except Exception as ws_error:
+            print(f"Error broadcasting to WebSocket: {ws_error}")
+            
     except Exception as e:
         print(f"Error sending to Elasticsearch: {e}")
 
@@ -179,7 +189,7 @@ class AIMiddleware(BaseHTTPMiddleware):
             # Queue is full, log but don't block the request
             print("Warning: Request queue is full, dropping request info")
         
-        # Also send to Elasticsearch in background (fire and forget)
-        asyncio.create_task(send_to_elasticsearch(request_info))
+        # Also send to Elasticsearch and WebSocket in background (fire and forget)
+        asyncio.create_task(send_to_elasticsearch_and_websocket(request_info))
 
         return response

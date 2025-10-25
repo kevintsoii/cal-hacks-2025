@@ -4,13 +4,18 @@ import Home from './pages/Home'
 import Dashboard from './pages/Dashboard'
 import Login from './pages/Login'
 import UserSearch from './pages/UserSearch'
+import { WebSocketProvider } from './hooks/useWebSocket'
 
 function App() {
   return (
     <Router>
       <Routes>
         <Route path="/" element={<Home />} />
-        <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/dashboard" element={
+          <WebSocketProvider>
+            <Dashboard />
+          </WebSocketProvider>
+        } />
         <Route path="/login" element={<Login />} />
         <Route path="/search" element={<UserSearch />} />
       </Routes>

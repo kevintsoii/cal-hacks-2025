@@ -11,7 +11,14 @@ from sample import app as samples_app
 from testrunners import router as tests_router
 from db.redis import redis_client
 from db.elasticsearch import elasticsearch_client
+from api.websocket_routes import router as websocket_router
+import asyncio
+import logging
+from datetime import datetime
 
+# Setup logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 app = FastAPI()
 
@@ -74,6 +81,57 @@ async def get_elasticsearch_sample():
 
 # Include the tests router
 app.include_router(tests_router, tags=["tests"])
+
+# Include WebSocket router
+app.include_router(websocket_router, tags=["websocket"])
+
+# Background task for periodic stats broadcasts
+async def broadcast_stats_periodically():
+    """
+    Background task that broadcasts stats every 30 seconds.
+    """
+    from websocket import manager, get_recent_stats
+    
+    logger.info("[Stats] Starting periodic stats broadcast task")
+    
+    while True:
+        try:
+            await asyncio.sleep(30)  # Every 30 seconds
+            
+            if manager.get_connection_count() > 0:
+                logger.info(f"[Stats] Broadcasting stats to {manager.get_connection_count()} clients")
+                stats = await get_recent_stats()
+                if stats:
+                    await manager.broadcast({
+                        "type": "stats",
+                        "timestamp": datetime.now().isoformat(),
+                        "stats": stats
+                    })
+            
+        except Exception as e:
+            logger.error(f"[Stats] Error broadcasting stats: {e}")
+            await asyncio.sleep(5)
+
+
+# Function to broadcast new requests (called by middleware)
+async def broadcast_new_request(request_data: dict):
+    """
+    Broadcast a new request to all WebSocket clients.
+    Called by middleware after logging to Elasticsearch.
+    
+    Args:
+        request_data: The request data to broadcast
+    """
+    from websocket import manager
+    
+    if manager.get_connection_count() > 0:
+        await manager.broadcast({
+            "type": "new_request",
+            "timestamp": datetime.now().isoformat(),
+            "data": request_data
+        })
+        logger.debug(f"[WebSocket] Broadcasted new request to {manager.get_connection_count()} clients")
+
 
 # Mount the samples app (this should be LAST so it doesn't catch all routes)
 app.mount("", samples_app)
