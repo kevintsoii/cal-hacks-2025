@@ -10,11 +10,19 @@ COPY requirements.txt .
 # Install dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Copy fix script and apply cosmpy protobuf fix
+COPY fix_cosmpy.sh .
+RUN chmod +x fix_cosmpy.sh && ./fix_cosmpy.sh
+
 # Copy application code
 COPY . .
 
-# Expose port
-EXPOSE 8000
+# Make startup script executable
+RUN chmod +x start.sh
 
-# Run the application
-CMD ["python", "main.py"]
+# Expose ports for FastAPI and Orchestrator Agent
+EXPOSE 8000
+EXPOSE 8001
+
+# Run both applications via the startup script
+CMD ["/bin/bash", "./start.sh"]
