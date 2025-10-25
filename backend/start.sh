@@ -22,12 +22,12 @@ CALIBRATION_PID=$!
 
 # Start the ESQL Query Agent in the background
 echo "Starting ESQL Query Agent on port 8006..."
-python esql_query_agent.py &
+python agents/esql_query_agent.py &
 ESQL_PID=$!
 
 # Start the Chatbot Agent in the background
 echo "Starting Chatbot Agent on port 8007..."
-python chatbot_agent.py &
+python agents/chatbot_agent.py &
 CHATBOT_PID=$!
 
 # Start the orchestrator agent in the background
