@@ -1,0 +1,133 @@
+from typing import List, Dict, Optional
+import os, requests, json, time
+from dotenv import load_dotenv
+
+load_dotenv()
+
+
+SYSTEM_PROMPT = f"""
+You are an AI Orchestrator for an API security middleware. Your job is to
+classify incoming API request logs and route them to specialized analysis agents.
+
+You will receive a list of logs in CSV format:
+"ip_address,path,method,user_id,json_body"
+You must classify each log into one of
+three categories: "auth", "search", or "general".
+
+- "auth": Use for logs related to login, registration, or user accounts.
+  (e.g., /auth/login, /api/v1/register)
+- "search": Use for logs related to public data queries, product lists, or scraping.
+  (e.g., /api/search, /api/products)
+- "general": Use for all other logs.
+
+Your response MUST be a single, valid JSON object with three keys:
+"auth", "search", and "general". Each key must contain a list of the
+full, original log objects that belong to that category. Example:
+{{
+    "auth": [
+        "123.45.67.8,/auth/login,POST,abc123,{{}}"
+    ],
+    "search": [
+        "123.45.67.8,/api/search,GET,abc123,{{}}"
+    ],
+    "general": [
+        "123.45.67.8,/api/other,GET,abc123,{{}}"
+    ]
+}}
+"""
+
+
+# original function to analyze API requests for suspicious activity
+def analyze_api_requests_for_threats() -> Dict:
+    start = time.time()
+    
+    api_key = os.getenv("GROQ_API_KEY")
+    if not api_key:
+        raise RuntimeError("Missing GROQ_API_KEY environment variable")
+    
+    logs = """
+
+    123.45.67.8,/auth/login,POST,abc123,
+123.45.67.8,/api/search,GET,abc123,q=widgets
+123.45.67.9,/api/other,GET,def456,
+98.76.54.32,/auth/login,POST,ghi789,username=alice
+98.76.54.33,/api/search,GET,ghi789,q=status
+203.0.113.10,/api/other,GET,jkl012,
+203.0.113.11,/auth/login,POST,mno345,username=bob
+192.0.2.5,/api/search,GET,pqr678,q=error+500
+192.0.2.6,/payments/charge,POST,stu901,amount=9.99
+198.51.100.7,/user/profile,GET,vwx234,
+198.51.100.8,/api/other,DELETE,yza567,
+203.0.113.12,/auth/login,POST,bcd890,username=carol
+203.0.113.13,/api/search,GET,efg123,q=login+attempts
+192.0.2.7,/api/other,PUT,hij456,update=true
+198.51.100.9,/auth/logout,POST,klm789,
+203.0.113.14,/api/search,GET,nop012,q=/admin
+123.45.67.10,/auth/login,POST,qrs345,username=dave
+123.45.67.11,/api/search,GET,tuv678,q=recent
+98.76.54.34,/api/other,GET,wxy901,
+198.51.100.10,/payments/charge,POST,zab234,amount=49.00
+192.0.2.8,/user/profile,PUT,cde567,bio=hello
+203.0.113.15,/auth/login,POST,fgh890,username=eve
+123.45.67.12,/api/search,GET,ijk123,q=help
+98.76.54.35,/api/other,GET,lmn456,
+198.51.100.11,/auth/login,POST,opq789,username=mallory
+192.0.2.9,/api/search,GET,rst012,q=status+code
+203.0.113.16,/api/other,POST,uvw345,action=ping
+123.45.67.13,/auth/login,POST,xyz678,username=trent
+98.76.54.36,/api/search,GET,aaa111,q=search+term
+198.51.100.12,/user/profile,GET,bbb222,
+
+
+    """
+
+    messages = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "user", "content": f"Analyze these API request logs for security threats:\n\n{logs}"},
+    ]
+    
+    url = "https://api.groq.com/openai/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {api_key}", 
+        "Content-Type": "application/json"
+    }
+    body = {
+        "model": 'llama-3.1-8b-instant', 
+        "messages": messages, 
+        "response_format": {"type": "json_object"}, 
+        "temperature": 0
+    }
+    
+    resp = requests.post(url, headers=headers, json=body, timeout=20)
+    
+    if resp.status_code != 200:
+        print(f"Error {resp.status_code}: {resp.text}")
+        resp.raise_for_status()
+    
+    print(json.dumps(resp.json(), indent=2))
+    content = resp.json()["choices"][0]["message"]["content"]
+    response_json = json.loads(content)
+    
+    # Count non-empty log lines
+    non_empty_lines = [line for line in logs.strip().split('\n') if line.strip()]
+    log_count = len(non_empty_lines)
+    
+    # Calculate total aggregated count from response JSON
+    total_count = 0
+    if isinstance(response_json, dict):
+        for category, items in response_json.items():
+            if isinstance(items, list):
+                total_count += len(items)
+            elif isinstance(items, dict):
+                total_count += len(items)
+    
+    print(f"Non-empty log lines: {log_count}, Total aggregated count: {total_count}")
+    #print(response_json)
+    
+    end = time.time()
+    print(f"Total time taken: {end - start:.2f} seconds")
+
+    
+    return response_json
+
+analyze_api_requests_for_threats()
