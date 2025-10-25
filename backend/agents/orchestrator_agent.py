@@ -1,6 +1,6 @@
 import time
 from models import (
-    APIRequestLog, RequestBatch, OrchestratorResponse, clean_llm_output
+    APIRequestLog, RequestBatch, OrchestratorResponse, clean_llm_output, SpecialistRequest
 )
 import os
 import json
@@ -163,32 +163,55 @@ async def handle_batch(ctx: Context, batch: RequestBatch) -> Dict[str, List[Dict
         ctx.logger.info(
             f"[ORCHESTRATOR] {len(auth_logs)} auth, {len(search_logs)} search, {len(general_logs)} general in {latency:.2f} seconds")
 
-        # 3. Broadcast tasks to specialists
-        tasks_to_run = []
-        # if auth_logs:
-        #     # Re-serialize from dicts back into Model objects
-        #     tasks = [APIRequestLog(**log) for log in auth_logs]
-        #     tasks_to_run.append(
-        #         ctx.broadcast(auth_protocol.digest, RequestBatch(requests=tasks))
-        #     )
+        # 3. Send to specialist agents via uAgents messaging
+        
+        # Agent addresses
+        GENERAL_AGENT_ADDRESS = "agent1q2ackrd978swlwajsswm4kjr9cszhc9rxgnuyy7rv9jzh4v3jta25vzv668"
+        AUTH_AGENT_ADDRESS = "agent1q054vfyk2qqnqwsrw804avurynvwkk9vdjcqu9q0at52zlaa5urxv0md3sk"
+        SEARCH_AGENT_ADDRESS = "agent1qtpatn2rged8wspghgl8sex9e05s78fvmh84pnyf5ghn6ue0t6vkjvp03mg" 
 
-        # if search_logs:
-        #     tasks = [APIRequestLog(**log) for log in search_logs]
-        #     tasks_to_run.append(
-        #         ctx.broadcast(search_protocol.digest,
-        #                       RequestBatch(requests=tasks))
-        #     )
 
-        # if general_logs:
-        #     tasks = [APIRequestLog(**log) for log in general_logs]
-        #     tasks_to_run.append(
-        #         ctx.broadcast(general_protocol.digest,
-        #                       RequestBatch(requests=tasks))
-        #     )
-
-        if tasks_to_run:
-            await asyncio.gather(*tasks_to_run)
-            ctx.logger.info("[ORCHESTRATOR] All specialized tasks have been broadcasted.")
+        # Send auth logs to Auth agent
+        if auth_logs:
+            ctx.logger.info(f"[ORCHESTRATOR] Routing {len(auth_logs)} logs to Auth Specialist via agent messaging...")
+            try:
+                # Create specialist request with the classified logs
+                specialist_msg = SpecialistRequest(logs=auth_logs)
+                
+                # Send message to auth agent
+                await ctx.send(AUTH_AGENT_ADDRESS, specialist_msg)
+                ctx.logger.info(f"[ORCHESTRATOR] ✓ Sent {len(auth_logs)} logs to Auth agent")
+                
+            except Exception as e:
+                ctx.logger.error(f"[ORCHESTRATOR] ✗ Error sending to Auth agent: {e}")
+        
+        # Send search logs to Search agent
+        if search_logs:
+            ctx.logger.info(f"[ORCHESTRATOR] Routing {len(search_logs)} logs to Search Specialist via agent messaging...")
+            try:
+                # Create specialist request with the classified logs
+                specialist_msg = SpecialistRequest(logs=search_logs)
+                
+                # Send message to search agent
+                await ctx.send(SEARCH_AGENT_ADDRESS, specialist_msg)
+                ctx.logger.info(f"[ORCHESTRATOR] ✓ Sent {len(search_logs)} logs to Search agent")
+                
+            except Exception as e:
+                ctx.logger.error(f"[ORCHESTRATOR] ✗ Error sending to Search agent: {e}")
+        
+        # Send general logs to General agent
+        if general_logs:
+            ctx.logger.info(f"[ORCHESTRATOR] Routing {len(general_logs)} logs to General Specialist via agent messaging...")
+            try:
+                # Create specialist request with the classified logs
+                specialist_msg = SpecialistRequest(logs=general_logs)
+                
+                # Send message to general agent
+                await ctx.send(GENERAL_AGENT_ADDRESS, specialist_msg)
+                ctx.logger.info(f"[ORCHESTRATOR] ✓ Sent {len(general_logs)} logs to General agent")
+                
+            except Exception as e:
+                ctx.logger.error(f"[ORCHESTRATOR] ✗ Error sending to General agent: {e}")
 
         return classified_logs
 
@@ -202,6 +225,14 @@ async def handle_batch(ctx: Context, batch: RequestBatch) -> Dict[str, List[Dict
         ctx.logger.error(f"[ORCHESTRATOR] An unexpected error occurred: {e}")
         return {"auth": [], "search": [], "general": []}
 
+
+
+@agent.on_message(model=OrchestratorResponse)
+async def handle_specialist_response(ctx: Context, sender: str, response: OrchestratorResponse):
+    """
+    Handle acknowledgment responses from specialist agents.
+    """
+    ctx.logger.info(f"[ORCHESTRATOR] ✓ Received acknowledgment from {sender[:16]}... (success={response.success})")
 
 
 @agent.on_event("startup")
