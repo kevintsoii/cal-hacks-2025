@@ -101,7 +101,6 @@ export default function UserSearch() {
 
   return (
     <div className="min-h-screen relative overflow-hidden">
-      <Navbar />
       
       {/* Background decorations */}
       <div className="absolute inset-0 -z-10 bg-gradient-to-br from-indigo-50 via-white to-purple-50">
