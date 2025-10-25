@@ -1,9 +1,11 @@
 import random
-from fastapi import APIRouter
+from fastapi import FastAPI
 from pydantic import BaseModel
 from fastapi.responses import JSONResponse
+from middleware.middleware import AIMiddleware
 
-router = APIRouter()
+app = FastAPI()
+app.add_middleware(AIMiddleware)
 
 
 class LoginRequest(BaseModel):
@@ -16,7 +18,7 @@ class SearchRequest(BaseModel):
     usernames: list[str]
 
 
-@router.post("/login")
+@app.post("/login")
 async def login(request: LoginRequest):
     """
     Login endpoint with hardcoded credentials.
@@ -35,7 +37,7 @@ async def login(request: LoginRequest):
         }, status_code=401)
 
 
-@router.post("/search")
+@app.post("/search")
 async def search(request: SearchRequest):
     """
     Search endpoint that returns random generated data for the provided usernames.

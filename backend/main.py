@@ -3,7 +3,7 @@ import uvicorn
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from samples import router as samples_router
+from sample import app as samples_app
 from db.redis import redis_client
 from db.elasticsearch import elasticsearch_client
 
@@ -17,8 +17,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include the samples router
-app.include_router(samples_router)
+# Mount the samples app
+app.mount("", samples_app)
 
 
 @app.get("/status")
