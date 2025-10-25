@@ -3,23 +3,20 @@
 Simple RAG Pipeline for Semantic History
 - Store flagged items as embeddings
 - Query for similar items
-- Persistent local storage
+- Connects to ChromaDB service via HTTP
 """
 
 import asyncio
-import chromadb
+import httpx
 from typing import List, Dict, Any
-import uuid
+import os
 from datetime import datetime
 
 class SimpleRAG:
-    def __init__(self, db_path: str = "./chroma_db"):
-        """Initialize the simple RAG system."""
-        self.client = chromadb.PersistentClient(path=db_path)
-        self.collection = self.client.get_or_create_collection(
-            name="semantic_history",
-            metadata={"description": "Semantic history of flagged items"}
-        )
+    def __init__(self, chromadb_url: str = None):
+        """Initialize the simple RAG system - connects to ChromaDB service."""
+        self.chromadb_url = chromadb_url or os.getenv("CHROMADB_URL", "http://localhost:8006")
+        self.client = httpx.AsyncClient(timeout=30.0)
     
     async def add_item(self, reasoning: str, user: str, ip: str, severity: int, metadata: Dict[str, Any] = None) -> str:
         """
@@ -35,29 +32,22 @@ class SimpleRAG:
         Returns:
             str: The ID of the added item
         """
-        if metadata is None:
-            metadata = {}
-        
-        # Generate unique ID
-        item_id = str(uuid.uuid4())
-        
-        # Store structured data in metadata (not embedded)
-        metadata.update({
+        payload = {
+            "reasoning": reasoning,
             "user": user,
             "ip": ip,
             "severity": severity,
-            "timestamp": datetime.now().isoformat()
-        })
+            "metadata": metadata
+        }
         
-        # Only embed the reasoning text (not user, IP, severity)
-        await asyncio.to_thread(
-            self.collection.add,
-            ids=[item_id],
-            documents=[reasoning],  # Only reasoning gets vectorized
-            metadatas=[metadata]
+        response = await self.client.post(
+            f"{self.chromadb_url}/add",
+            json=payload
         )
+        response.raise_for_status()
         
-        return item_id
+        result = response.json()
+        return result["id"]
     
     async def query_items(self, query_text: str, k: int = 5) -> List[Dict[str, Any]]:
         """
@@ -70,74 +60,50 @@ class SimpleRAG:
         Returns:
             List of similar items with scores
         """
-        # Query ChromaDB (async wrapper)
-        results = await asyncio.to_thread(
-            self.collection.query,
-            query_texts=[query_text],
-            n_results=k
+        payload = {
+            "query_text": query_text,
+            "k": k
+        }
+        
+        response = await self.client.post(
+            f"{self.chromadb_url}/query",
+            json=payload
         )
+        response.raise_for_status()
         
-        # Format results
-        items = []
-        if results["ids"] and results["ids"][0]:
-            for i in range(len(results["ids"][0])):
-                item = {
-                    "id": results["ids"][0][i],
-                    "text": results["documents"][0][i],
-                    "score": float(results["distances"][0][i]) if results["distances"] else 0.0,
-                    "metadata": results["metadatas"][0][i] if results["metadatas"] else {}
-                }
-                items.append(item)
-        
-        return items
+        result = response.json()
+        return result["items"]
     
     async def get_all_items(self) -> List[Dict[str, Any]]:
         """Get all items in the collection."""
-        results = await asyncio.to_thread(
-            self.collection.get
-        )
-        
-        items = []
-        if results["ids"]:
-            for i in range(len(results["ids"])):
-                item = {
-                    "id": results["ids"][i],
-                    "text": results["documents"][i],
-                    "metadata": results["metadatas"][i] if results["metadatas"] else {}
-                }
-                items.append(item)
-        
-        return items
+        response = await self.client.get(f"{self.chromadb_url}/all")
+        response.raise_for_status()
+        result = response.json()
+        return result["items"]
     
     async def delete_item(self, item_id: str) -> bool:
         """Delete an item by ID."""
         try:
-            await asyncio.to_thread(
-                self.collection.delete,
-                ids=[item_id]
-            )
-            return True
+            # Not implemented in service yet, would need to add endpoint
+            return False
         except Exception:
             return False
     
     async def get_stats(self) -> Dict[str, Any]:
         """Get collection statistics."""
-        count = await asyncio.to_thread(self.collection.count)
+        response = await self.client.get(f"{self.chromadb_url}/stats")
+        response.raise_for_status()
+        result = response.json()
         return {
-            "total_items": count,
-            "collection_name": self.collection.name
+            "total_items": result["total_items"],
+            "collection_name": result["collection_name"]
         }
     
     async def clear_all(self) -> bool:
         """Clear all items from the collection."""
         try:
-            # Get all IDs first
-            all_items = await asyncio.to_thread(self.collection.get)
-            if all_items["ids"]:
-                await asyncio.to_thread(
-                    self.collection.delete,
-                    ids=all_items["ids"]
-                )
+            response = await self.client.delete(f"{self.chromadb_url}/clear")
+            response.raise_for_status()
             return True
         except Exception:
             return False

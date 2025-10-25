@@ -9,10 +9,17 @@ import httpx  # For making async API calls to Groq
 from datetime import datetime, timezone
 from uuid import uuid4
 from pathlib import Path
+import sys
+
+# Add parent directory to path to import rag module
+sys.path.append(str(Path(__file__).parent.parent))
 
 from dotenv import load_dotenv
 from uagents import Agent, Context
 from typing import List, Dict, Optional
+
+# Import ChromaDB RAG implementation
+from rag.simple_rag import SimpleRAG
 
 load_dotenv()
 
@@ -30,9 +37,8 @@ agent = Agent(
 # Create a persistent async client for Groq API calls
 http_client = httpx.AsyncClient()
 
-# Simulated ChromaDB storage path
-CHROMADB_SIMULATION_PATH = Path(__file__).parent.parent / "data" / "chromadb_simulation.json"
-CHROMADB_SIMULATION_PATH.parent.mkdir(parents=True, exist_ok=True)
+# Initialize ChromaDB RAG - connects to separate ChromaDB service via HTTP
+rag = SimpleRAG()
 
 # CALIBRATION AGENT PROMPT
 CALIBRATION_PROMPT = """You are an AI Calibration Agent responsible for fine-tuning security mitigations based on historical effectiveness data.
@@ -75,6 +81,9 @@ Output format - Return ONLY valid JSON:
 async def startup(ctx: Context):
     ctx.logger.info("[CALIBRATION] Calibration Agent online with AI-powered RAG")
     ctx.logger.info(f"[CALIBRATION] Using Groq LLM for intelligent mitigation calibration")
+    chromadb_url = os.getenv("CHROMADB_URL", "http://localhost:8006")
+    ctx.logger.info(f"[CALIBRATION] Connected to ChromaDB service at: {chromadb_url}")
+    ctx.logger.info(f"[CALIBRATION] Vector embeddings enabled for semantic search")
     ctx.logger.info(f"[CALIBRATION] Agent address: {agent.address}")
     if not GROQ_API_KEY:
         ctx.logger.warning("[CALIBRATION] ⚠️  GROQ_API_KEY not found - calibration will fail!")
@@ -86,10 +95,10 @@ async def handle_mitigation_batch(ctx: Context, sender: str, batch: MitigationBa
     Handle incoming mitigation recommendations from specialist agents.
     
     Workflow:
-    1. Query ChromaDB (simulated) for similar past mitigations (RAG)
-    2. Analyze effectiveness of similar mitigations
+    1. Query ChromaDB for similar past mitigations using vector similarity (RAG)
+    2. Analyze effectiveness of similar mitigations using Groq LLM
     3. Amplify or downgrade the mitigation based on historical data
-    4. Save the calibrated mitigation to ChromaDB with reasoning
+    4. Save the calibrated mitigation to ChromaDB with vector embeddings
     5. Apply the final mitigation to Redis
     """
     ctx.logger.info(f"[CALIBRATION] ✓ Received {len(batch.mitigations)} mitigations from {batch.source_agent} agent")
@@ -149,52 +158,45 @@ async def handle_mitigation_batch(ctx: Context, sender: str, batch: MitigationBa
 
 async def query_chromadb(ctx: Context, reason: str, entity: str) -> List[Dict]:
     """
-    Query ChromaDB (simulated with JSON) for similar past mitigations using RAG.
-    In production, this would use vector similarity search on ChromaDB.
+    Query ChromaDB for similar past mitigations using vector similarity search (RAG).
+    Uses semantic embeddings to find similar threat patterns.
     """
     try:
-        # Load existing data
-        if CHROMADB_SIMULATION_PATH.exists():
-            with open(CHROMADB_SIMULATION_PATH, 'r') as f:
-                data = json.load(f)
-        else:
-            data = {"mitigations": []}
+        # Build semantic query combining reason and entity context
+        query_text = f"{reason} affecting {entity}"
         
-        # Simulate semantic search by looking for similar reasons/entities
-        # In production, this would use ChromaDB's vector similarity search
+        # Use RAG to find semantically similar past incidents
+        similar_items = await rag.query_items(query_text, k=5)
+        
+        if not similar_items:
+            ctx.logger.info(f"[CALIBRATION]   No similar cases found in ChromaDB")
+            return []
+        
+        # Transform RAG results to calibration format
         similar_cases = []
-        reason_lower = reason.lower()
+        for item in similar_items:
+            metadata = item.get("metadata", {})
+            similar_cases.append({
+                "id": item.get("id"),
+                "entity_type": metadata.get("entity_type"),
+                "entity": metadata.get("entity"),
+                "severity": metadata.get("severity"),
+                "mitigation": metadata.get("mitigation"),
+                "reason": item.get("text"),  # The reasoning text (embedded)
+                "source_agent": metadata.get("source_agent"),
+                "effectiveness": metadata.get("effectiveness"),
+                "result": metadata.get("result", "pending"),
+                "similarity_score": item.get("score", 0.0),
+                "timestamp": metadata.get("timestamp")
+            })
         
-        for entry in data.get("mitigations", []):
-            # Simple keyword matching (simulating vector similarity)
-            entry_reason = entry.get("reason", "").lower()
-            entry_entity = entry.get("entity", "")
-            
-            # Check for similarity
-            score = 0
-            keywords = ["brute force", "enumeration", "rate", "ddos", "scanning", "abuse"]
-            for keyword in keywords:
-                if keyword in reason_lower and keyword in entry_reason:
-                    score += 1
-            
-            # Also match if same entity
-            if entity == entry_entity:
-                score += 2
-            
-            if score > 0:
-                similar_cases.append({
-                    **entry,
-                    "similarity_score": score
-                })
-        
-        # Sort by similarity score
-        similar_cases.sort(key=lambda x: x.get("similarity_score", 0), reverse=True)
-        
-        # Return top 5 most similar cases
-        return similar_cases[:5]
+        ctx.logger.info(f"[CALIBRATION]   Found {len(similar_cases)} semantically similar cases")
+        return similar_cases
         
     except Exception as e:
         ctx.logger.error(f"[CALIBRATION] Error querying ChromaDB: {e}")
+        import traceback
+        ctx.logger.error(f"[CALIBRATION] Traceback: {traceback.format_exc()}")
         return []
 
 
@@ -357,46 +359,59 @@ Return your decision in the specified JSON format."""
 
 async def save_to_chromadb(ctx: Context, mitigation: Mitigation, calibration_reasoning: Dict):
     """
-    Save the calibrated mitigation to ChromaDB (simulated with JSON) with semantic reasoning.
-    This creates memory for future RAG queries.
+    Save the calibrated mitigation to ChromaDB with semantic reasoning.
+    This creates vector embeddings for future RAG queries.
     """
     try:
-        # Load existing data
-        if CHROMADB_SIMULATION_PATH.exists():
-            with open(CHROMADB_SIMULATION_PATH, 'r') as f:
-                data = json.load(f)
-        else:
-            data = {"mitigations": []}
+        # Map severity to numeric (1-5) for ChromaDB
+        severity_map = {"low": 2, "medium": 3, "high": 4, "critical": 5}
+        severity_numeric = severity_map.get(mitigation.severity, 3)
         
-        # Create entry
-        entry = {
-            "id": str(uuid4()),
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+        # Build comprehensive reasoning text that will be embedded (vectorized)
+        # This is what ChromaDB will use for semantic similarity matching
+        reasoning_text = f"""
+Threat: {mitigation.reason}
+Mitigation Applied: {mitigation.mitigation} (severity: {mitigation.severity})
+Entity Type: {mitigation.entity_type}
+Source Agent: {mitigation.source_agent}
+Calibration Decision: {calibration_reasoning["decision"]}
+Reasoning: {calibration_reasoning["reasoning"]}
+Confidence: {calibration_reasoning["confidence"]}
+        """.strip()
+        
+        # Store structured data in metadata (not embedded, but stored alongside)
+        metadata = {
             "entity_type": mitigation.entity_type,
             "entity": mitigation.entity,
             "severity": mitigation.severity,
             "mitigation": mitigation.mitigation,
-            "reason": mitigation.reason,
             "source_agent": mitigation.source_agent,
             "calibration_decision": calibration_reasoning["decision"],
-            "calibration_reasoning": calibration_reasoning["reasoning"],
-            "confidence": calibration_reasoning["confidence"],
-            # Placeholder for future feedback (will be updated when we get human input)
-            "effectiveness": None,  # To be filled later with actual results
-            "result": "pending"  # Will be "resolved", "escalated", "false_positive", etc.
+            "calibration_confidence": calibration_reasoning["confidence"],
+            "result": "pending",  # Will be "resolved", "escalated", "false_positive", etc.
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
+        # Don't include effectiveness if None - will be added later when we have feedback
+        if calibration_reasoning.get("effectiveness") is not None:
+            metadata["effectiveness"] = calibration_reasoning["effectiveness"]
         
-        # Append to mitigations list
-        data["mitigations"].append(entry)
+        # Save to ChromaDB with vector embeddings
+        # The reasoning_text gets embedded for semantic search
+        item_id = await rag.add_item(
+            reasoning=reasoning_text,
+            user=mitigation.entity if mitigation.entity_type == "user" else "system",
+            ip=mitigation.entity if mitigation.entity_type == "ip" else "0.0.0.0",
+            severity=severity_numeric,
+            metadata=metadata
+        )
         
-        # Save back to file
-        with open(CHROMADB_SIMULATION_PATH, 'w') as f:
-            json.dump(data, f, indent=2)
-        
-        ctx.logger.info(f"[CALIBRATION]   Saved entry ID: {entry['id'][:8]}...")
+        ctx.logger.info(f"[CALIBRATION]   Saved to ChromaDB with ID: {item_id[:8]}...")
+        ctx.logger.info(f"[CALIBRATION]   Vector embedding created for semantic search")
         
     except Exception as e:
         ctx.logger.error(f"[CALIBRATION] Error saving to ChromaDB: {e}")
+        import traceback
+        ctx.logger.error(f"[CALIBRATION] Traceback: {traceback.format_exc()}")
 
 
 async def apply_to_redis(ctx: Context, mitigation: Mitigation):
