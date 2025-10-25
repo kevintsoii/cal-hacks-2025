@@ -1,9 +1,11 @@
 import uvicorn
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from samples import router as samples_router
+from db.redis import redis_client
+from db.elasticsearch import elasticsearch_client
 
 
 app = FastAPI()
@@ -26,6 +28,28 @@ async def status():
     """
     return JSONResponse({"status": "ok"})
 
+@app.get("/redis/status")
+async def ping_redis():
+    """
+    Check Redis connection.
+    """
+    if await redis_client.ping():
+        return JSONResponse({"status": "ok"})
+    else:
+        raise HTTPException(status_code=500, detail="Redis connection failed")
+
+@app.get("/elastic/status")
+async def ping_elasticsearch():
+    """
+    Check Elasticsearch connection.
+    """
+    try:
+        if await elasticsearch_client.ping():
+            return JSONResponse({"status": "ok"})
+        else:
+            raise HTTPException(status_code=500, detail="Elasticsearch connection failed")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Elasticsearch error: {str(e)}")
 
 if __name__ == "__main__":
     uvicorn.run(

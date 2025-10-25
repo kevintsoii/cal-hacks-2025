@@ -12,6 +12,15 @@ services:
       - ./backend:/app
     environment:
       - PYTHONUNBUFFERED=1
+      - ELASTICSEARCH_HOST=elasticsearch
+      - ELASTICSEARCH_PORT=9200
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    depends_on:
+      redis:
+        condition: service_started
+      elasticsearch:
+        condition: service_healthy
     networks:
       - hackathon-network
     restart: unless-stopped
@@ -34,6 +43,45 @@ services:
       - hackathon-network
     restart: unless-stopped
 
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - hackathon-network
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:9.1.5
+    container_name: elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms1g -Xmx1g"
+      - logger.level=WARN
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    volumes:
+      - elasticsearch-data:/usr/share/elasticsearch/data
+    networks:
+      - hackathon-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 1s
+
 networks:
   hackathon-network:
     driver: bridge
+
+volumes:
+  redis-data:
+  elasticsearch-data:
