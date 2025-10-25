@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { X, AlertCircle, Clock, CheckCircle, Ban, XCircle, Pause, Shield } from "lucide-react";
 import DetectionLog from "@/components/Detection-Log";
 import MetricsOverview from "@/components/Metrics-Overview";
@@ -8,6 +8,7 @@ import EndpointStatus from "@/components/Endpoint-Status";
 import ThreatAnalysis from "@/components/Threat-analysis";
 import Navbar from "@/components/Navbar";
 import RunTests from "@/components/RunTests";
+import Chat from "./Chat";
 import type { RunTestsTestType, RunTestsLogEntry } from "@/components/RunTests";
 
 type MitigationLevel = {
@@ -31,7 +32,7 @@ const allMitigationLevels: MitigationLevel[] = [
 
 export default function Dashboard() {
   const [activeTab, setActiveTab] = useState<
-    "overview" | "detections" | "endpoints" | "run-tests"
+    "overview" | "detections" | "endpoints" | "run-tests" | "chat"
   >("overview");
   const [showSettings, setShowSettings] = useState(false);
 
@@ -57,6 +58,9 @@ export default function Dashboard() {
     allMitigationLevels[3], // Temporary Ban
     allMitigationLevels[4], // Perma Ban
   ]);
+
+  // WebSocket ref for test execution (persists across tab changes)
+  const testWebSocketRef = useRef<WebSocket | null>(null);
 
   const availableLevels = allMitigationLevels.filter(
     level => !timelineLevels.find(tl => tl.id === level.id)
@@ -239,7 +243,15 @@ export default function Dashboard() {
                 setCurrentRequest={setCurrentRequest}
                 totalRequests={totalRequests}
                 setTotalRequests={setTotalRequests}
+                wsRef={testWebSocketRef}
               />
+            </div>
+          )}
+
+          {/* Chat Tab */}
+          {activeTab === "chat" && (
+            <div className="fixed inset-0 ml-64 mt-[73px]">
+              <Chat />
             </div>
           )}
         </main>

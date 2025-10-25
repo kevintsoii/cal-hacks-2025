@@ -1,37 +1,35 @@
-import time
-from models import (
-    APIRequestLog, RequestBatch, OrchestratorResponse, clean_llm_output, SpecialistRequest,
-    Mitigation, MitigationBatch
-)
-import os
-import json
-import httpx  # For making async API calls
 import asyncio
-from datetime import datetime
-from uuid import uuid4
+import httpx
+import json
+import os
+import sys
+import time
 
+from datetime import datetime
+from pathlib import Path
+from typing import Dict
+from uuid import uuid4
 from dotenv import load_dotenv
 from uagents import Agent, Context, Protocol
-from typing import List, Dict
+from uagents_core.contrib.protocols.chat import ChatAcknowledgement, ChatMessage, EndSessionContent, TextContent, chat_protocol_spec
 
-from uagents_core.contrib.protocols.chat import (
-    ChatAcknowledgement,
-    ChatMessage,
-    EndSessionContent,
-    TextContent,
-    chat_protocol_spec,
-)
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from models import OrchestratorResponse, clean_llm_output, SpecialistRequest, Mitigation, MitigationBatch
+
 
 load_dotenv()
 
 
-
-# SETUP
+# Setup API keys and clients
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
+GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 
-# Calibration Agent address (deterministic from seed "calibration_agent_seed_234223443")
 CALIBRATION_AGENT_ADDRESS = "agent1qgnl0fly845g2zlx904lsgwygl4vl7jygcx7xyxf82zu95g26mgmy0dk9rt"
 
+http_client = httpx.AsyncClient()
+
+# Setup Agent
 agent = Agent(
     name="Auth API Specialist",
     seed="Auth API Specialist Seed 2342343424",
@@ -41,17 +39,11 @@ agent = Agent(
     publish_agent_details=True
 )
 
-chat_protocol = Protocol(spec=chat_protocol_spec)
+@agent.on_event("startup")
+async def startup(ctx: Context):
+    ctx.logger.info("[AUTH] Online, Groq client ready.")
 
-# Create a persistent async client for the agent
-http_client = httpx.AsyncClient()
-
-
-
-
-
-# 2. DEFINE THE AUTH-SPECIFIC PROMPT
-AUTH_SPECIALIST_PROMPT = """You are an AI security specialist focused on AUTHENTICATION endpoints (/login, /register, /auth/*, password resets, etc.).
+SYSTEM_PROMPT = """You are an AI security specialist focused on AUTHENTICATION endpoints (/login, /register, /auth/*, password resets, etc.).
 
 Your responsibilities:
 1. Review the provided authentication API activity logs for suspicious patterns
@@ -106,7 +98,7 @@ If no threats detected, return an empty array: []
 Do NOT include any text outside the JSON array in your final response.
 """
 
-# Elasticsearch tool definition
+# Elasticsearch Tool Definition
 ES_TOOL = {
     "type": "function",
     "function": {
@@ -125,7 +117,7 @@ ES_TOOL = {
     }
 }
 
-
+# Elasticsearch query function
 async def fetch_from_elasticsearch(ctx: Context, query_string: str) -> Dict:
     """
     Query Elasticsearch for authentication logs matching the query string.
@@ -134,7 +126,6 @@ async def fetch_from_elasticsearch(ctx: Context, query_string: str) -> Dict:
     try:
         from db.elasticsearch import elasticsearch_client
         
-        ctx.logger.info(f"[AUTH] 🔍 Elasticsearch query: {query_string}")
         
         query_lower = query_string.lower()
         
@@ -152,7 +143,6 @@ async def fetch_from_elasticsearch(ctx: Context, query_string: str) -> Dict:
         ips = re.findall(ip_pattern, query_string)
         if ips:
             es_query["bool"]["must"].append({"terms": {"client_ip": ips}})
-            ctx.logger.info(f"[AUTH]   Filtering by IPs: {ips}")
         
         # Extract username if present
         if "user" in query_lower or "username" in query_lower:
@@ -160,7 +150,6 @@ async def fetch_from_elasticsearch(ctx: Context, query_string: str) -> Dict:
             if user_match:
                 username = user_match.group(1)
                 es_query["bool"]["must"].append({"term": {"user": username}})
-                ctx.logger.info(f"[AUTH]   Filtering by user: {username}")
         
         # Filter for auth endpoints only
         auth_paths = ["/login", "/register", "/auth", "/signup", "/password"]
@@ -168,14 +157,12 @@ async def fetch_from_elasticsearch(ctx: Context, query_string: str) -> Dict:
             {"prefix": {"path": path}} for path in auth_paths
         ]
         es_query["bool"]["minimum_should_match"] = 1
-        ctx.logger.info(f"[AUTH]   Filtering for auth endpoints: {auth_paths}")
         
         # Filter for failed auth attempts (status 401, 403)
         if "failed" in query_lower or "unsuccessful" in query_lower:
             es_query["bool"]["must"].append({
                 "terms": {"response_status": [401, 403]}
             })
-            ctx.logger.info(f"[AUTH]   Filtering for failed attempts (401/403)")
         
         # Extract time range
         time_value = 30  # default 30 minutes for auth
@@ -198,10 +185,8 @@ async def fetch_from_elasticsearch(ctx: Context, query_string: str) -> Dict:
             }
         }
         es_query["bool"]["filter"].append(time_filter)
-        ctx.logger.info(f"[AUTH]   Time range: last {time_value}{time_unit}")
         
         # Execute search
-        ctx.logger.info(f"[AUTH]   Querying index: api_requests")
         results = await elasticsearch_client.search(
             index_name="api_requests",
             query=es_query,
@@ -225,8 +210,8 @@ async def fetch_from_elasticsearch(ctx: Context, query_string: str) -> Dict:
             log_str = f"{client_ip},{path},{method},{user},{body_str},1,status={response_status}"
             additional_logs.append(log_str)
         
-        if additional_logs:
-            ctx.logger.info(f"[AUTH]   Sample log: {additional_logs[0][:100]}...")
+        # if additional_logs:
+        #     ctx.logger.info(f"[AUTH]   Sample log: {additional_logs[0][:100]}...")
         
         return {
             "success": True,
@@ -237,9 +222,8 @@ async def fetch_from_elasticsearch(ctx: Context, query_string: str) -> Dict:
         }
         
     except Exception as e:
-        ctx.logger.error(f"[AUTH] ✗ Elasticsearch query failed: {e}")
         import traceback
-        ctx.logger.error(f"[AUTH] ✗ Traceback: {traceback.format_exc()}")
+        ctx.logger.error(f"[AUTH] ✗ Elasticsearch query failed: {e}\nTraceback: {traceback.format_exc()}")
         return {
             "success": False,
             "logs": [],
@@ -247,8 +231,7 @@ async def fetch_from_elasticsearch(ctx: Context, query_string: str) -> Dict:
             "error": str(e)
         }
 
-
-# MAIN
+# Handle a batch of authentication logs
 async def handle_batch(ctx: Context, logs: SpecialistRequest, return_metadata: bool = False):
     """
     This function handles authentication requests and analyzes them for auth-specific threats.
@@ -258,12 +241,6 @@ async def handle_batch(ctx: Context, logs: SpecialistRequest, return_metadata: b
     try:
         start_time = time.time()
         
-        # Log first few entries
-        for i, log in enumerate(logs.logs[:3]):
-            ctx.logger.info(f"[AUTH]   Log {i+1}: {log[:80]}{'...' if len(log) > 80 else ''}")
-        
-        if len(logs.logs) > 3:
-            ctx.logger.info(f"[AUTH]   ... and {len(logs.logs) - 3} more logs")
         
         # Prepare logs for Groq analysis
         original_logs = logs.logs.copy()
@@ -274,8 +251,6 @@ async def handle_batch(ctx: Context, logs: SpecialistRequest, return_metadata: b
         additional_logs_from_es = []
         es_query_used = None
         
-        # Call Groq for threat analysis (with tool calling support)
-        ctx.logger.info(f"[AUTH] Calling Groq for auth threat analysis with tool support...")
         
         headers = {
             'Content-Type': 'application/json',
@@ -283,7 +258,7 @@ async def handle_batch(ctx: Context, logs: SpecialistRequest, return_metadata: b
         }
         
         messages = [
-            {"role": "system", "content": AUTH_SPECIALIST_PROMPT},
+            {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": user_prompt}
         ]
         
@@ -296,7 +271,7 @@ async def handle_batch(ctx: Context, logs: SpecialistRequest, return_metadata: b
         }
         
         response = await http_client.post(
-            "https://api.groq.com/openai/v1/chat/completions",
+            GROQ_API_URL,
             headers=headers,
             json=payload,
             timeout=30.0
@@ -311,7 +286,6 @@ async def handle_batch(ctx: Context, logs: SpecialistRequest, return_metadata: b
         
         # Check if LLM wants to use the ES tool
         if assistant_message.get('tool_calls'):
-            ctx.logger.info(f"[AUTH] 🔧 LLM requested tool call for historical auth data")
             
             tool_call = assistant_message['tool_calls'][0]
             function_name = tool_call['function']['name']
@@ -338,8 +312,6 @@ async def handle_batch(ctx: Context, logs: SpecialistRequest, return_metadata: b
                 extended_logs = original_logs + additional_logs_from_es
                 extended_logs_text = "\n".join(extended_logs)
                 
-                ctx.logger.info(f"[AUTH] 📊 Extended batch: {len(original_logs)} original + {len(additional_logs_from_es)} from ES = {len(extended_logs)} total")
-                
                 # Update the user message with extended logs
                 messages.append({
                     "role": "user",
@@ -353,7 +325,7 @@ async def handle_batch(ctx: Context, logs: SpecialistRequest, return_metadata: b
                 payload["response_format"] = {"type": "json_object"}
                 
                 response = await http_client.post(
-                    "https://api.groq.com/openai/v1/chat/completions",
+                    GROQ_API_URL,
                     headers=headers,
                     json=payload,
                     timeout=30.0
@@ -382,8 +354,7 @@ async def handle_batch(ctx: Context, logs: SpecialistRequest, return_metadata: b
             else:
                 mitigations = []
         except json.JSONDecodeError as e:
-            ctx.logger.error(f"[AUTH] Failed to parse Groq response: {e}")
-            ctx.logger.error(f"[AUTH] Response was: {llm_output_str[:200]}")
+            ctx.logger.error(f"[AUTH] Failed to parse Groq response: {e}\nResponse was: {llm_output_str[:200]}")
             mitigations = []
         
         end_time = time.time()
@@ -433,13 +404,7 @@ async def handle_batch(ctx: Context, logs: SpecialistRequest, return_metadata: b
             return {"mitigations": [], "error": str(e)}
         return []
 
-
-
-@agent.on_event("startup")
-async def startup(ctx: Context):
-    ctx.logger.info("[AUTH] Online, Groq client ready.")
-
-
+# Handle specialist agent messages
 @agent.on_message(model=SpecialistRequest)
 async def handle_request_batch(ctx: Context, sender: str, request: SpecialistRequest):
     """
@@ -480,6 +445,10 @@ async def handle_request_batch(ctx: Context, sender: str, request: SpecialistReq
             
         except Exception as e:
             ctx.logger.error(f"[AUTH] ✗ Error sending to Calibration Agent: {e}")
+
+
+# Setup Chat Protocol support
+chat_protocol = Protocol(spec=chat_protocol_spec)
 
 @chat_protocol.on_message(ChatMessage)
 async def handle_message(ctx: Context, sender: str, msg: ChatMessage):
@@ -527,8 +496,9 @@ async def handle_message(ctx: Context, sender: str, msg: ChatMessage):
 @chat_protocol.on_message(ChatAcknowledgement)
 async def handle_ack(ctx: Context, sender: str, msg: ChatAcknowledgement):
     pass
- 
+
 agent.include(chat_protocol, publish_manifest=True)
+
 
 if __name__ == "__main__":
     agent.run()
