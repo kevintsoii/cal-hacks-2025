@@ -8,6 +8,7 @@ import EndpointStatus from "@/components/Endpoint-Status";
 import ThreatAnalysis from "@/components/Threat-analysis";
 import Navbar from "@/components/Navbar";
 import RunTests from "@/components/RunTests";
+import Chat from "./Chat";
 import type { RunTestsTestType, RunTestsLogEntry } from "@/components/RunTests";
 
 type MitigationLevel = {
@@ -31,7 +32,7 @@ const allMitigationLevels: MitigationLevel[] = [
 
 export default function Dashboard() {
   const [activeTab, setActiveTab] = useState<
-    "overview" | "detections" | "endpoints" | "run-tests"
+    "overview" | "detections" | "endpoints" | "run-tests" | "chat"
   >("overview");
   const [showSettings, setShowSettings] = useState(false);
 
@@ -240,6 +241,13 @@ export default function Dashboard() {
                 totalRequests={totalRequests}
                 setTotalRequests={setTotalRequests}
               />
+            </div>
+          )}
+
+          {/* Chat Tab */}
+          {activeTab === "chat" && (
+            <div className="fixed inset-0 ml-64 mt-[73px]">
+              <Chat />
             </div>
           )}
         </main>
