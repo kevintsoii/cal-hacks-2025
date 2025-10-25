@@ -43,7 +43,6 @@ agent = Agent(
     seed="elasticsearch_query_agent_seed_98765",
     port=8006,  # ESQL Query Agent on dedicated port
     mailbox=True,
-    readme_path="README.md",
     publish_agent_details=True
 )
 

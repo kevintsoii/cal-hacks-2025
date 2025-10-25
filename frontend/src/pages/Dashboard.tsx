@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { X, AlertCircle, Clock, CheckCircle, Ban, XCircle, Pause, Shield } from "lucide-react";
 import DetectionLog from "@/components/Detection-Log";
 import MetricsOverview from "@/components/Metrics-Overview";
@@ -58,6 +58,9 @@ export default function Dashboard() {
     allMitigationLevels[3], // Temporary Ban
     allMitigationLevels[4], // Perma Ban
   ]);
+
+  // WebSocket ref for test execution (persists across tab changes)
+  const testWebSocketRef = useRef<WebSocket | null>(null);
 
   const availableLevels = allMitigationLevels.filter(
     level => !timelineLevels.find(tl => tl.id === level.id)
@@ -240,6 +243,7 @@ export default function Dashboard() {
                 setCurrentRequest={setCurrentRequest}
                 totalRequests={totalRequests}
                 setTotalRequests={setTotalRequests}
+                wsRef={testWebSocketRef}
               />
             </div>
           )}

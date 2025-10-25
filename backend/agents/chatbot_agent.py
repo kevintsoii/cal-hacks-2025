@@ -33,7 +33,6 @@ agent = Agent(
     seed="security_chatbot_seed_12345",
     port=8007,
     mailbox=True,
-    readme_path="README.md",
     publish_agent_details=True
 )
 
