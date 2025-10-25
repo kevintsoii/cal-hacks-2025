@@ -17,10 +17,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Mount the samples app
-app.mount("", samples_app)
-
-
 @app.get("/status")
 async def status():
     """
@@ -50,6 +46,9 @@ async def ping_elasticsearch():
             raise HTTPException(status_code=500, detail="Elasticsearch connection failed")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Elasticsearch error: {str(e)}")
+
+# Mount the samples app (this should be LAST so it doesn't catch all routes)
+app.mount("", samples_app)
 
 if __name__ == "__main__":
     uvicorn.run(

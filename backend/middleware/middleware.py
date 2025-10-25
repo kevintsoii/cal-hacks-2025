@@ -1,10 +1,13 @@
 import time
 import json
 import hashlib
+import asyncio
 from datetime import datetime, timezone
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
+
+from .queue import request_queue, start_queue_processor
 
 
 def sanitize_sensitive_data(data):
@@ -44,6 +47,11 @@ class AIMiddleware(BaseHTTPMiddleware):
     for threat detection and analysis.
     """
     
+    def __init__(self, app):
+        super().__init__(app)
+        # Start the queue processor on initialization
+        start_queue_processor()
+    
     async def dispatch(self, request: Request, call_next):
         # Start timing
         start_time = time.time()
@@ -79,6 +87,8 @@ class AIMiddleware(BaseHTTPMiddleware):
             "body_raw": None,
             "body_json": None,  # Parsed JSON for structured querying in ES
             "body_size": 0,
+
+            "user": None,
         }
         
         # Hash authorization header (deterministic for spam detection)
@@ -102,6 +112,8 @@ class AIMiddleware(BaseHTTPMiddleware):
                         body_json = json.loads(body_str)
                         # Sanitize sensitive fields like passwords
                         request_info["body_json"] = sanitize_sensitive_data(body_json)
+
+                        request_info["user"] = body_json.get("username") or body_json.get("yourUsername")
                     except json.JSONDecodeError:
                         # Not JSON, that's fine - body_raw has the string
                         pass
@@ -121,5 +133,12 @@ class AIMiddleware(BaseHTTPMiddleware):
         request_info["response_status"] = response.status_code
         request_info["processing_time_ms"] = round(process_time * 1000, 2)
         request_info["response_success"] = 200 <= response.status_code < 300
+        
+        # Add to queue for batch processing (non-blocking)
+        try:
+            request_queue.put_nowait(request_info)
+        except asyncio.QueueFull:
+            # Queue is full, log but don't block the request
+            print("Warning: Request queue is full, dropping request info")
 
         return response
