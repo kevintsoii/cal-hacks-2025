@@ -1,6 +1,9 @@
 import uvicorn
 from dotenv import load_dotenv
 
+# Load environment variables from .env file BEFORE importing modules that need them
+load_dotenv()
+
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -8,9 +11,6 @@ from sample import app as samples_app
 from testrunners import router as tests_router
 from db.redis import redis_client
 from db.elasticsearch import elasticsearch_client
-
-# Load environment variables from .env file
-load_dotenv()
 
 
 app = FastAPI()

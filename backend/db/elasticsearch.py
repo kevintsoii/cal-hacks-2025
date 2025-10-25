@@ -10,12 +10,16 @@ class ElasticsearchClient:
     
     def __init__(self):
         """Initialize Elasticsearch connection."""
-        es_host = os.getenv("ELASTICSEARCH_HOST", "elasticsearch")
-        es_port = int(os.getenv("ELASTICSEARCH_PORT", 9200))
+        es_endpoint = os.getenv("ELASTICSEARCH_ENDPOINT")
+        es_api_key = os.getenv("ELASTICSEARCH_API_KEY")
+        
+        if not es_endpoint or not es_api_key:
+            raise ValueError("ELASTICSEARCH_ENDPOINT and ELASTICSEARCH_API_KEY must be set in environment variables")
         
         self.client = AsyncElasticsearch(
-            [f"http://{es_host}:{es_port}"],
-            verify_certs=False,
+            es_endpoint,
+            api_key=es_api_key,
+            verify_certs=True,
             request_timeout=30
         )
     
