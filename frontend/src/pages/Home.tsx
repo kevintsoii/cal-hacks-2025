@@ -161,11 +161,11 @@ app.add_middleware(Dyno)`
             </div>
             <div className="flex items-center space-x-4">
               <Button
-                onClick={() => navigate('/login')}
+                onClick={() => navigate('/dashboard')}
                 variant="outline"
                 className="border-gray-600 text-black hover:border-blue-400 hover:text-blue-400 bg-white transition-all duration-300 hover:scale-105 hover:shadow-lg hover:shadow-blue-500/50"
               >
-                Login
+                Dashboard
               </Button>
             </div>
           </div>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Shield, X, AlertCircle, Clock, CheckCircle, Ban, XCircle, Pause } from "lucide-react";
+import { X, AlertCircle, Clock, CheckCircle, Ban, XCircle, Pause, Shield } from "lucide-react";
 import DetectionLog from "@/components/Detection-Log";
 import MetricsOverview from "@/components/Metrics-Overview";
 import EndpointStatus from "@/components/Endpoint-Status";
@@ -34,6 +34,21 @@ export default function Dashboard() {
     "overview" | "detections" | "endpoints" | "run-tests"
   >("overview");
   const [showSettings, setShowSettings] = useState(false);
+
+  const getTabTitle = () => {
+    switch (activeTab) {
+      case "overview":
+        return "Overview";
+      case "detections":
+        return "Detections";
+      case "endpoints":
+        return "Endpoints";
+      case "run-tests":
+        return "Run Tests";
+      default:
+        return "Overview";
+    }
+  };
   
   const [timelineLevels, setTimelineLevels] = useState<MitigationLevel[]>([
     allMitigationLevels[0], // Do Nothing
@@ -149,18 +164,13 @@ export default function Dashboard() {
       <div className="flex-1 ml-64">
         {/* Top Header */}
         <header className="border-b border-gray-200 bg-white fixed top-0 right-0 left-64 z-40">
-          <div className="px-6 py-4">
+          <div className="px-6 py-5">
             <div className="flex items-center justify-between">
-              <div className="flex items-start gap-3">
-                <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-lg flex items-center justify-center shadow-lg shadow-blue-500/20">
-                  <Shield className="w-6 h-6 text-white" />
-                </div>
-                <div>
-                  <h1 className="text-2xl font-bold text-gray-900 leading-none">Dyno</h1>
-                  <p className="text-xs text-gray-600">
-                    Real-time API Protection
-                  </p>
-                </div>
+              <div>
+                <h1 className="text-2xl font-bold text-gray-900 leading-none" style={{ fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' }}>{getTabTitle()}</h1>
+                <p className="text-xs text-gray-600 mt-2">
+                  Real-time API Protection
+                </p>
               </div>
               <div className="flex items-center gap-4">
                 <div className="flex items-center gap-2 px-3 py-1.5 bg-green-500/10 border border-green-500/30 rounded-lg">
@@ -178,7 +188,7 @@ export default function Dashboard() {
         </header>
 
         {/* Main Content */}
-        <main className="px-6 py-8 mt-[73px]">
+        <main className="px-6 py-8 mt-[89px]">
           {/* Overview Tab */}
           {activeTab === "overview" && (
             <div className="space-y-8">

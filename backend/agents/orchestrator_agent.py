@@ -39,7 +39,6 @@ agent = Agent(
     port=8001,
     #endpoint=["http://localhost:8001/submit"],
     mailbox=True,
-    readme_path="README.md",
     publish_agent_details=True
 )
 

@@ -10,7 +10,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import Navbar from '@/components/Navbar'
+import StartupNavbar from '@/components/StartupNavbar'
 import ReCAPTCHA from 'react-google-recaptcha'
 
 const RECAPTCHA_SITE_KEY = '6Ldp_vMrAAAAAAftWfJS8c5SuYqzyZP6TpytO6tq'
@@ -101,6 +101,7 @@ export default function UserSearch() {
 
   return (
     <div className="min-h-screen relative overflow-hidden">
+      <StartupNavbar />
       
       {/* Background decorations */}
       <div className="absolute inset-0 -z-10 bg-gradient-to-br from-indigo-50 via-white to-purple-50">
