@@ -1,12 +1,23 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { MagnifyingGlassIcon, DashboardIcon, RocketIcon, GearIcon, CubeIcon } from '@radix-ui/react-icons'
+import RunTests from '@/components/RunTests'
+import type { RunTestsTestType, RunTestsLogEntry } from '@/components/RunTests'
 
 type Section = 'detections' | 'dashboards' | 'run-tests' | 'settings'
 
 export default function Dashboard() {
   const [activeSection, setActiveSection] = useState<Section>('detections')
   const navigate = useNavigate()
+  
+  // Run Tests state - persists across tab switches
+  const [runTestsActiveTab, setRunTestsActiveTab] = useState<RunTestsTestType>('Authentication')
+  const [runTestsRunningTests, setRunTestsRunningTests] = useState<Set<string>>(new Set())
+  const [runTestsProgress, setRunTestsProgress] = useState(0)
+  const [runTestsLogs, setRunTestsLogs] = useState<RunTestsLogEntry[]>([])
+  const [runTestsCompletedCount, setRunTestsCompletedCount] = useState(0)
+  const [runTestsCurrentRequest, setRunTestsCurrentRequest] = useState(0)
+  const [runTestsTotalRequests, setRunTestsTotalRequests] = useState(0)
 
   const sidebarItems = [
     { id: 'detections' as Section, label: 'Detections', icon: MagnifyingGlassIcon },
@@ -22,7 +33,24 @@ export default function Dashboard() {
       case 'dashboards':
         return <SectionPlaceholder title="Dashboards" />
       case 'run-tests':
-        return <SectionPlaceholder title="Run Tests" />
+        return (
+          <RunTests
+            activeTab={runTestsActiveTab}
+            setActiveTab={setRunTestsActiveTab}
+            runningTests={runTestsRunningTests}
+            setRunningTests={setRunTestsRunningTests}
+            progress={runTestsProgress}
+            setProgress={setRunTestsProgress}
+            logs={runTestsLogs}
+            setLogs={setRunTestsLogs}
+            completedCount={runTestsCompletedCount}
+            setCompletedCount={setRunTestsCompletedCount}
+            currentRequest={runTestsCurrentRequest}
+            setCurrentRequest={setRunTestsCurrentRequest}
+            totalRequests={runTestsTotalRequests}
+            setTotalRequests={setRunTestsTotalRequests}
+          />
+        )
       case 'settings':
         return <SectionPlaceholder title="Settings" />
       default:

@@ -4,7 +4,8 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from samples import app as samples_app
+from sample import app as samples_app
+from testrunners import router as tests_router
 from db.redis import redis_client
 from db.elasticsearch import elasticsearch_client
 
@@ -70,6 +71,9 @@ async def get_elasticsearch_sample():
             return JSONResponse({"data": None, "message": "No entries found in Elasticsearch"})
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Elasticsearch error: {str(e)}")
+
+# Include the tests router
+app.include_router(tests_router, tags=["tests"])
 
 # Mount the samples app (this should be LAST so it doesn't catch all routes)
 app.mount("", samples_app)
