@@ -1,13 +1,28 @@
 #!/bin/bash
 
+# Start the Auth agent in the background
+echo "Starting Auth Agent on port 8002..."
+cd /app/agents
+python auth_agent.py &
+AUTH_PID=$!
+
+# Start the Search agent in the background
+echo "Starting Search Agent on port 8003..."
+python search_agent.py &
+SEARCH_PID=$!
+
+# Start the General agent in the background
+echo "Starting General Agent on port 8004..."
+python general_agent.py &
+GENERAL_PID=$!
+
 # Start the orchestrator agent in the background
 echo "Starting Orchestrator Agent on port 8001..."
-cd /app/agents
 python orchestrator_agent.py &
 ORCHESTRATOR_PID=$!
 
-# Give the orchestrator a moment to start
-sleep 2
+# Give the agents a moment to start
+sleep 3
 
 # Start the main FastAPI application
 echo "Starting FastAPI application on port 8000..."
@@ -18,8 +33,8 @@ FASTAPI_PID=$!
 # Function to handle shutdown
 shutdown() {
     echo "Shutting down services..."
-    kill $ORCHESTRATOR_PID $FASTAPI_PID 2>/dev/null
-    wait $ORCHESTRATOR_PID $FASTAPI_PID 2>/dev/null
+    kill $AUTH_PID $SEARCH_PID $GENERAL_PID $ORCHESTRATOR_PID $FASTAPI_PID 2>/dev/null
+    wait $AUTH_PID $SEARCH_PID $GENERAL_PID $ORCHESTRATOR_PID $FASTAPI_PID 2>/dev/null
     exit 0
 }
 

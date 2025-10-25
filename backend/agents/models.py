@@ -1,8 +1,8 @@
 from uagents import Model
 from typing import List, Optional
 
-
 # 1. DATA MODELS
+
 
 class APIRequestLog(Model):
     """A single API request log entry."""
@@ -22,8 +22,14 @@ class OrchestratorResponse(Model):
     success: bool
 
 
+class SpecialistRequest(Model):
+    """A list of strings sent to specialist agents."""
+    logs: List[str]
 
-# 2. FUNCTIONS
+
+
+
+
 
 def clean_llm_output(llm_output_str: str) -> str:
     """

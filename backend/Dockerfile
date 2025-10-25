@@ -20,9 +20,12 @@ COPY . .
 # Make startup script executable
 RUN chmod +x start.sh
 
-# Expose ports for FastAPI and Orchestrator Agent
+# Expose ports for FastAPI and all Agents
 EXPOSE 8000
 EXPOSE 8001
+EXPOSE 8002
+EXPOSE 8003
+EXPOSE 8004
 
 # Run both applications via the startup script
 CMD ["/bin/bash", "./start.sh"]
