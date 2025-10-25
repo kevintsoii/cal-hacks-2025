@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -11,6 +11,9 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import Navbar from '@/components/Navbar'
+import ReCAPTCHA from 'react-google-recaptcha'
+
+const RECAPTCHA_SITE_KEY = '6Ldp_vMrAAAAAAftWfJS8c5SuYqzyZP6TpytO6tq'
 
 interface SearchResult {
   username: string
@@ -24,6 +27,9 @@ export default function UserSearch() {
   const [results, setResults] = useState<SearchResult[]>([])
   const [errorMessage, setErrorMessage] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+  const [showCaptcha, setShowCaptcha] = useState(false)
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null)
+  const recaptchaRef = useRef<ReCAPTCHA>(null)
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -44,15 +50,20 @@ export default function UserSearch() {
     }
 
     try {
+      const requestBody: any = { 
+        yourUsername: yourUsername || undefined, 
+        usernames 
+      }
+      if (captchaToken) {
+        requestBody.captcha_token = captchaToken
+      }
+
       const response = await fetch('http://localhost:8000/search', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ 
-          yourUsername: yourUsername || undefined, 
-          usernames 
-        }),
+        body: JSON.stringify(requestBody),
       })
 
       const data = await response.json()
@@ -60,16 +71,32 @@ export default function UserSearch() {
       if (data.error) {
         setErrorMessage(data.error)
         setResults([])
+        
+        // Check if error requires captcha
+        if (data.error.toLowerCase().includes('captcha required') || 
+            data.error.toLowerCase().includes('captcha verification failed')) {
+          setShowCaptcha(true)
+        }
       } else if (data.success && data.results) {
         setResults(data.results)
         setErrorMessage('')
+        setShowCaptcha(false)
       }
     } catch (error) {
       setErrorMessage('Failed to connect to the server. Please try again.')
       setResults([])
     } finally {
+      // Always reset captcha on every request
+      setCaptchaToken(null)
+      if (recaptchaRef.current) {
+        recaptchaRef.current.reset()
+      }
       setIsLoading(false)
     }
+  }
+
+  const onCaptchaChange = (token: string | null) => {
+    setCaptchaToken(token)
   }
 
   return (
@@ -127,7 +154,17 @@ export default function UserSearch() {
                 </div>
               </div>
 
-              <Button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700" disabled={isLoading}>
+              {showCaptcha && (
+                <div className="flex justify-center">
+                  <ReCAPTCHA
+                    ref={recaptchaRef}
+                    sitekey={RECAPTCHA_SITE_KEY}
+                    onChange={onCaptchaChange}
+                  />
+                </div>
+              )}
+
+              <Button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700" disabled={isLoading || (showCaptcha && !captchaToken)}>
                 {isLoading ? 'Searching...' : 'Search Users'}
               </Button>
             </form>

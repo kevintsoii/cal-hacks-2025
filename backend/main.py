@@ -1,4 +1,5 @@
 import uvicorn
+from dotenv import load_dotenv
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
@@ -6,6 +7,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from samples import app as samples_app
 from db.redis import redis_client
 from db.elasticsearch import elasticsearch_client
+
+# Load environment variables from .env file
+load_dotenv()
 
 
 app = FastAPI()

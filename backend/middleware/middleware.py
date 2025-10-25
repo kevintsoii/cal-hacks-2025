@@ -2,13 +2,16 @@ import time
 import json
 import hashlib
 import asyncio
+import os
 from datetime import datetime, timezone
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.responses import Response
+from starlette.responses import Response, JSONResponse
 
 from .queue import request_queue, start_queue_processor
+from .mitigation import check_mitigations, apply_mitigation
 from db.elasticsearch import elasticsearch_client
+from db.redis import redis_client
 
 
 async def send_to_elasticsearch(request_info: dict):
@@ -68,11 +71,18 @@ class AIMiddleware(BaseHTTPMiddleware):
         start_queue_processor()
     
     async def dispatch(self, request: Request, call_next):
+        # Extract IP immediately for mitigation check
+        client_ip = request.client.host if request.client else None
+        # Override with mock-ip header if provided (for testing)
+        if "mock-ip" in request.headers:
+            client_ip = request.headers.get("mock-ip")
+        
+
         # Start timing
         start_time = time.time()
         timestamp = datetime.now(tz=timezone.utc).isoformat()
-        
-        # Extract comprehensive request info for AI security analysis
+
+                # Extract comprehensive request info for AI security analysis
         request_info = {
             # Basic request info
             "timestamp": timestamp,
@@ -82,7 +92,7 @@ class AIMiddleware(BaseHTTPMiddleware):
             "query_params": dict(request.query_params) if request.query_params else None,
             
             # Client identification
-            "client_ip": request.client.host if request.client else None,
+            "client_ip": client_ip,
             "client_port": request.client.port if request.client else None,
             
             # Headers - security relevant
@@ -105,15 +115,11 @@ class AIMiddleware(BaseHTTPMiddleware):
 
             "user": None,
         }
-        
-        # Hash authorization header (deterministic for spam detection)
-        auth_header = request.headers.get("authorization")
-        if auth_header:
-            hash_obj = hashlib.sha256(auth_header.encode())
-            hash_hex = hash_obj.hexdigest()[:16]
-            request_info["authorization"] = f"hash_{hash_hex}_len{len(auth_header)}"
-        
-        # Extract body if present (for POST/PUT/PATCH)
+
+        # Read body once for both mitigation check and logging
+        username = None
+        captcha_token = None
+        body = None
         if request.method in ["POST", "PUT", "PATCH"]:
             try:
                 body = await request.body()
@@ -121,16 +127,15 @@ class AIMiddleware(BaseHTTPMiddleware):
                     body_str = body.decode()
                     request_info["body_raw"] = body_str
                     request_info["body_size"] = len(body)
-                    
-                    # Try to parse as JSON for structured ES queries
                     try:
                         body_json = json.loads(body_str)
-                        # Sanitize sensitive fields like passwords
+                        username = body_json.get("username") or body_json.get("yourUsername")
+                        captcha_token = body_json.get("captcha_token")
                         request_info["body_json"] = sanitize_sensitive_data(body_json)
 
-                        request_info["user"] = body_json.get("username") or body_json.get("yourUsername")
+                        request_info["user"] = username
+                    
                     except json.JSONDecodeError:
-                        # Not JSON, that's fine - body_raw has the string
                         pass
                 
                 # Reset the request body stream so the route can read it
@@ -139,6 +144,24 @@ class AIMiddleware(BaseHTTPMiddleware):
                 request._receive = receive
             except Exception as e:
                 request_info["body_error"] = str(e)
+        
+        # Check Redis for active mitigations (IP and User)
+        severity = await check_mitigations(client_ip, username)
+        
+        # Apply mitigation if exists
+        if severity > 0:
+            mitigation_response = await apply_mitigation(severity, captcha_token)
+            if mitigation_response:
+                return mitigation_response
+            # If no response (captcha verified or delay applied), continue processing
+        
+        
+        # Hash authorization header (deterministic for spam detection)
+        auth_header = request.headers.get("authorization")
+        if auth_header:
+            hash_obj = hashlib.sha256(auth_header.encode())
+            hash_hex = hash_obj.hexdigest()[:16]
+            request_info["authorization"] = f"hash_{hash_hex}_len{len(auth_header)}"
         
         # Process the request
         response = await call_next(request)
