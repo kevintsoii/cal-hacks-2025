@@ -27,6 +27,22 @@ class SpecialistRequest(Model):
     logs: List[str]
 
 
+class Mitigation(Model):
+    """A single mitigation recommendation."""
+    entity_type: str  # "ip" or "user"
+    entity: str  # IP address or username
+    severity: str  # "low", "medium", "high", "critical"
+    mitigation: str  # "delay", "captcha", "temp_block", "ban"
+    reason: str  # Explanation
+    source_agent: Optional[str] = None  # Which agent detected it (auth/search/general)
+
+
+class MitigationBatch(Model):
+    """Batch of mitigations sent to Calibration Agent."""
+    mitigations: List[Mitigation]
+    source_agent: str  # "auth", "search", or "general"
+
+
 
 
 

@@ -7,8 +7,8 @@ load_dotenv()
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from sample import app as samples_app
-from testrunners import router as tests_router
+from experiments.sample import app as samples_app
+from experiments.testrunners import router as tests_router
 from db.redis import redis_client
 from db.elasticsearch import elasticsearch_client
 from api.websocket_routes import router as websocket_router

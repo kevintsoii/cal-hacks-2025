@@ -16,6 +16,11 @@ echo "Starting General Agent on port 8004..."
 python general_agent.py &
 GENERAL_PID=$!
 
+# Start the Calibration agent in the background
+echo "Starting Calibration Agent on port 8005..."
+python calibration_agent.py &
+CALIBRATION_PID=$!
+
 # Start the orchestrator agent in the background
 echo "Starting Orchestrator Agent on port 8001..."
 python orchestrator_agent.py &
@@ -33,8 +38,8 @@ FASTAPI_PID=$!
 # Function to handle shutdown
 shutdown() {
     echo "Shutting down services..."
-    kill $AUTH_PID $SEARCH_PID $GENERAL_PID $ORCHESTRATOR_PID $FASTAPI_PID 2>/dev/null
-    wait $AUTH_PID $SEARCH_PID $GENERAL_PID $ORCHESTRATOR_PID $FASTAPI_PID 2>/dev/null
+    kill $AUTH_PID $SEARCH_PID $GENERAL_PID $CALIBRATION_PID $ORCHESTRATOR_PID $FASTAPI_PID 2>/dev/null
+    wait $AUTH_PID $SEARCH_PID $GENERAL_PID $CALIBRATION_PID $ORCHESTRATOR_PID $FASTAPI_PID 2>/dev/null
     exit 0
 }
 
