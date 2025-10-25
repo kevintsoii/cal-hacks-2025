@@ -2,28 +2,27 @@
 
 # Start the Auth agent in the background
 echo "Starting Auth Agent on port 8002..."
-cd /app/agents
-python auth_agent.py &
+python agents/auth_agent.py &
 AUTH_PID=$!
 
 # Start the Search agent in the background
 echo "Starting Search Agent on port 8003..."
-python search_agent.py &
+python agents/search_agent.py &
 SEARCH_PID=$!
 
 # Start the General agent in the background
 echo "Starting General Agent on port 8004..."
-python general_agent.py &
+python agents/general_agent.py &
 GENERAL_PID=$!
 
 # Start the Calibration agent in the background
 echo "Starting Calibration Agent on port 8005..."
-python calibration_agent.py &
+python agents/calibration_agent.py &
 CALIBRATION_PID=$!
 
 # Start the orchestrator agent in the background
 echo "Starting Orchestrator Agent on port 8001..."
-python orchestrator_agent.py &
+python agents/orchestrator_agent.py &
 ORCHESTRATOR_PID=$!
 
 # Give the agents a moment to start

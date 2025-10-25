@@ -1,38 +1,36 @@
-import time
-from models import (
-    APIRequestLog, RequestBatch, OrchestratorResponse, clean_llm_output, SpecialistRequest
-)
-import os
-import json
-import httpx  # For making async API calls
 import asyncio
-from datetime import datetime
-from uuid import uuid4
+import httpx
+import json
+import os
+import sys
+import time
 
+from datetime import datetime
+from pathlib import Path
+from typing import Dict, List
+from uuid import uuid4
 from dotenv import load_dotenv
 from uagents import Agent, Context, Protocol
-from typing import List, Dict
+from uagents_core.contrib.protocols.chat import ChatAcknowledgement, ChatMessage, EndSessionContent, TextContent, chat_protocol_spec
 
-from uagents_core.contrib.protocols.chat import (
-    ChatAcknowledgement,
-    ChatMessage,
-    EndSessionContent,
-    TextContent,
-    chat_protocol_spec,
-)
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from models import RequestBatch, OrchestratorResponse, clean_llm_output, SpecialistRequest
+
 
 load_dotenv()
 
-# Use a relative import ('.')
 
-# 1. SETUP AGENT AND ASI:ONE CLIENT
+# Setup API keys and clients
 ASI_API_KEY = os.environ.get("ASI_API_KEY")
 ASI_API_URL = "https://api.asi1.ai/v1/chat/completions"
 
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 
+http_client = httpx.AsyncClient()
 
+# Setup Agent
 agent = Agent(
     name="API Security Orchestrator",
     seed="API Security Orchestrator 1234455",
@@ -42,16 +40,10 @@ agent = Agent(
     publish_agent_details=True
 )
 
-chat_protocol = Protocol(spec=chat_protocol_spec)
+@agent.on_event("startup")
+async def startup(ctx: Context):
+    ctx.logger.info("[ORCHESTRATOR] Orchestrator online, ASI:One Mini client ready.")
 
-# Create a persistent async client for the agent
-http_client = httpx.AsyncClient()
-
-
-
-
-
-# 2. DEFINE THE ORCHESTRATOR'S PROMPT
 SYSTEM_PROMPT = f"""
 You are an AI Orchestrator for an API security middleware. Your job is to
 classify incoming API request logs and route them to specialized analysis agents.
@@ -83,6 +75,8 @@ full, original log objects that belong to that category. Example:
 }}
 """
 
+# LLM Call functions
+# Groq seems to be faster, while ASI:One Mini may be more accurate for being made for agent routing.
 async def asii_llm_call(csv_string: str) -> dict:
     user_prompt = f"Here are the incoming API request logs in CSV format:\n{csv_string}"
     
@@ -123,35 +117,28 @@ async def groq_llm_call(csv_string: str) -> dict:
     response = await http_client.post(GROQ_API_URL, headers=headers, json=payload, timeout=30.0)
     return response.json()
 
-
+# Handle a batch of requests
 async def handle_batch(ctx: Context, batch: RequestBatch) -> Dict[str, List[Dict]]:
     """
     This function handles the classification and routing of a batch of requests.
     """
     ctx.logger.info(f"[ORCHESTRATOR] Received batch of {len(batch.requests)} requests. Classifying with ASI:One Mini...")
 
-    # 1. Serialize logs for the prompt
-    # Manually serialize batch as CSV string: header then comma-separated fields per line, no libraries
-    # Compress duplicate lines and add count
+    # Minimize token usage, by compressing duplicate lines by adding count
     line_counts = {}
     for req in batch.requests:
         line = f"{req.ip_address if req.ip_address is not None else ''},{req.path},{req.method},{req.user_id if req.user_id is not None else ''},{req.json_body if req.json_body is not None else '{}'}"
         line_counts[line] = line_counts.get(line, 0) + 1
-    
     csv_lines = [f"{line},{count}" for line, count in line_counts.items()]
     csv_string = "\n".join(csv_lines)
 
-    # 2. Call LLM and parse response
+    # Categorize using LLM and call specialist agents
     try:
         start_time = time.time()
         response_data = await groq_llm_call(csv_string)
-        
+
         llm_output_str = response_data['choices'][0]['message']['content']
-
-        # Clean the LLM output string to remove markdown code blocks
         llm_output_str = clean_llm_output(llm_output_str)
-
-        # Parse the LLM's JSON response
         classified_logs = json.loads(llm_output_str)
 
         auth_logs = classified_logs.get("auth", [])
@@ -163,53 +150,29 @@ async def handle_batch(ctx: Context, batch: RequestBatch) -> Dict[str, List[Dict
         ctx.logger.info(
             f"[ORCHESTRATOR] {len(auth_logs)} auth, {len(search_logs)} search, {len(general_logs)} general in {latency:.2f} seconds")
 
-        # 3. Send to specialist agents via uAgents messaging
-        
-        # Agent addresses
+        # Send to specialist agents via uAgents messaging
         GENERAL_AGENT_ADDRESS = "agent1q2ackrd978swlwajsswm4kjr9cszhc9rxgnuyy7rv9jzh4v3jta25vzv668"
         AUTH_AGENT_ADDRESS = "agent1q054vfyk2qqnqwsrw804avurynvwkk9vdjcqu9q0at52zlaa5urxv0md3sk"
         SEARCH_AGENT_ADDRESS = "agent1qtpatn2rged8wspghgl8sex9e05s78fvmh84pnyf5ghn6ue0t6vkjvp03mg" 
 
-
-        # Send auth logs to Auth agent
         if auth_logs:
-            ctx.logger.info(f"[ORCHESTRATOR] Routing {len(auth_logs)} logs to Auth Specialist via agent messaging...")
             try:
-                # Create specialist request with the classified logs
                 specialist_msg = SpecialistRequest(logs=auth_logs)
-                
-                # Send message to auth agent
                 await ctx.send(AUTH_AGENT_ADDRESS, specialist_msg)
-                ctx.logger.info(f"[ORCHESTRATOR] ✓ Sent {len(auth_logs)} logs to Auth agent")
-                
             except Exception as e:
                 ctx.logger.error(f"[ORCHESTRATOR] ✗ Error sending to Auth agent: {e}")
         
-        # Send search logs to Search agent
         if search_logs:
-            ctx.logger.info(f"[ORCHESTRATOR] Routing {len(search_logs)} logs to Search Specialist via agent messaging...")
             try:
-                # Create specialist request with the classified logs
                 specialist_msg = SpecialistRequest(logs=search_logs)
-                
-                # Send message to search agent
                 await ctx.send(SEARCH_AGENT_ADDRESS, specialist_msg)
-                ctx.logger.info(f"[ORCHESTRATOR] ✓ Sent {len(search_logs)} logs to Search agent")
-                
             except Exception as e:
                 ctx.logger.error(f"[ORCHESTRATOR] ✗ Error sending to Search agent: {e}")
         
-        # Send general logs to General agent
         if general_logs:
-            ctx.logger.info(f"[ORCHESTRATOR] Routing {len(general_logs)} logs to General Specialist via agent messaging...")
             try:
-                # Create specialist request with the classified logs
                 specialist_msg = SpecialistRequest(logs=general_logs)
-                
-                # Send message to general agent
                 await ctx.send(GENERAL_AGENT_ADDRESS, specialist_msg)
-                ctx.logger.info(f"[ORCHESTRATOR] ✓ Sent {len(general_logs)} logs to General agent")
-                
             except Exception as e:
                 ctx.logger.error(f"[ORCHESTRATOR] ✗ Error sending to General agent: {e}")
 
@@ -225,21 +188,7 @@ async def handle_batch(ctx: Context, batch: RequestBatch) -> Dict[str, List[Dict
         ctx.logger.error(f"[ORCHESTRATOR] An unexpected error occurred: {e}")
         return {"auth": [], "search": [], "general": []}
 
-
-
-@agent.on_message(model=OrchestratorResponse)
-async def handle_specialist_response(ctx: Context, sender: str, response: OrchestratorResponse):
-    """
-    Handle acknowledgment responses from specialist agents.
-    """
-    ctx.logger.info(f"[ORCHESTRATOR] ✓ Received acknowledgment from {sender[:16]}... (success={response.success})")
-
-
-@agent.on_event("startup")
-async def startup(ctx: Context):
-    ctx.logger.info("[ORCHESTRATOR] Orchestrator online, ASI:One Mini client ready.")
-
-
+# Set up REST API support
 @agent.on_rest_post("/rest/post", RequestBatch, OrchestratorResponse)
 async def handle_request_batch(ctx: Context, request: RequestBatch) -> OrchestratorResponse:
     """
@@ -247,6 +196,10 @@ async def handle_request_batch(ctx: Context, request: RequestBatch) -> Orchestra
     """
     asyncio.create_task(handle_batch(ctx, request))
     return OrchestratorResponse(success=True)
+
+
+# Setup Chat Protocol support
+chat_protocol = Protocol(spec=chat_protocol_spec)
 
 @chat_protocol.on_message(ChatMessage)
 async def handle_message(ctx: Context, sender: str, msg: ChatMessage):
@@ -266,18 +219,27 @@ async def handle_message(ctx: Context, sender: str, msg: ChatMessage):
         # Try to parse the text as JSON to create a RequestBatch
         parsed_data = json.loads(text)
         
-        # Validate that it has the expected structure
+        # Handle different input formats
         if isinstance(parsed_data, dict):
-            request_batch = RequestBatch(requests=parsed_data["requests"])
-            
-            # Fire handle_batch asynchronously in the background
-            asyncio.create_task(handle_batch(ctx, request_batch))
-            
-            response = 'Request batch received and being processed in the background.'
+            # Check if it has a "requests" key (wrapped format)
+            if "requests" in parsed_data:
+                request_batch = RequestBatch(requests=parsed_data["requests"])
+            else:
+                # Treat the dict as a single request and wrap it in a list
+                request_batch = RequestBatch(requests=[parsed_data])
+        elif isinstance(parsed_data, list):
+            # Direct list of requests (unwrapped format)
+            request_batch = RequestBatch(requests=parsed_data)
         else:
-            response = f'Could not parse request batch. Expected format: [{{}}]'
-    except json.JSONDecodeError:
-        response = 'Could not parse JSON from the message.'
+            response = f'Could not parse request batch. Received type: {type(parsed_data).__name__}'
+            raise ValueError(response)
+        
+        # Fire handle_batch asynchronously in the background
+        asyncio.create_task(handle_batch(ctx, request_batch))
+        
+        response = 'Request batch received and being processed in the background.'
+    except json.JSONDecodeError as e:
+        response = f'Could not parse JSON from the message: {str(e)}'
     except Exception as e:
         response = f'Could not process request batch: {str(e)}'
 
@@ -294,8 +256,18 @@ async def handle_message(ctx: Context, sender: str, msg: ChatMessage):
 @chat_protocol.on_message(ChatAcknowledgement)
 async def handle_ack(ctx: Context, sender: str, msg: ChatAcknowledgement):
     pass
- 
+
 agent.include(chat_protocol, publish_manifest=True)
+
+
+# Handle specialist agent responses
+@agent.on_message(model=OrchestratorResponse)
+async def handle_specialist_response(ctx: Context, sender: str, response: OrchestratorResponse):
+    """
+    Handle acknowledgment responses from specialist agents.
+    """
+    ctx.logger.info(f"[ORCHESTRATOR] ✓ Received acknowledgment from {sender[:16]}... (success={response.success})")
+
 
 if __name__ == "__main__":
     agent.run()

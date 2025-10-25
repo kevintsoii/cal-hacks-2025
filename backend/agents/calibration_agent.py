@@ -1,14 +1,19 @@
 import time
+import sys
+import os
+from pathlib import Path
+
+# Add parent directory to Python path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 from models import (
     MitigationBatch, Mitigation, OrchestratorResponse
 )
-import os
 import json
 import asyncio
 import httpx  # For making async API calls to Groq
 from datetime import datetime, timezone
 from uuid import uuid4
-from pathlib import Path
 
 from dotenv import load_dotenv
 from uagents import Agent, Context
