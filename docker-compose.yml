@@ -21,6 +21,7 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - CHROMADB_URL=http://chromadb:9000
+      - CHROMADB_SERVICE_URL=http://chromadb:9000
     depends_on:
       redis:
         condition: service_started
