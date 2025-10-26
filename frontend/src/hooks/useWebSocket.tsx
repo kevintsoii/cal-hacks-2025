@@ -14,6 +14,7 @@ interface RequestData {
   response_success: boolean;
   client_ip: string;
   username?: string;
+  user?: string;
   timestamp: string;
   processing_time_ms: number;
   user_agent?: string;

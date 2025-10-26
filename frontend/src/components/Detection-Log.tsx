@@ -1,214 +1,345 @@
 "use client";
 
-import { AlertTriangle, Clock, Shield, Activity, XCircle, CheckCircle } from "lucide-react";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { useState, useMemo } from "react";
+import { Search, Filter, ChevronDown, Check } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { useRequests, useConnectionStatus } from "@/hooks/useWebSocket";
-import { useMemo } from "react";
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 
-interface LiveRequest {
-  id: string;
-  timestamp: string;
-  method: string;
-  path: string;
-  status: number;
-  ip: string;
-  username?: string;
-  responseTime: number;
-  success: boolean;
-}
-
-const methodColors: Record<string, string> = {
-  GET: "bg-blue-500/10 text-blue-600",
-  POST: "bg-green-500/10 text-green-600",
-  PUT: "bg-yellow-500/10 text-yellow-600",
-  DELETE: "bg-red-500/10 text-red-600",
-  PATCH: "bg-purple-500/10 text-purple-600",
-};
-
-const statusColors = (status: number) => {
-  if (status >= 200 && status < 300) return "bg-green-500/10 text-green-600 border-green-500/30";
-  if (status >= 400 && status < 500) return "bg-yellow-500/10 text-yellow-600 border-yellow-500/30";
-  if (status >= 500) return "bg-red-500/10 text-red-600 border-red-500/30";
-  return "bg-gray-500/10 text-gray-600 border-gray-500/30";
-};
-
-// Format timestamp to relative time
-const formatTimestamp = (timestamp: string): string => {
-  try {
-    const date = new Date(timestamp);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffSec = Math.floor(diffMs / 1000);
-    
-    if (diffSec < 60) return `${diffSec}s ago`;
-    const diffMin = Math.floor(diffSec / 60);
-    if (diffMin < 60) return `${diffMin}m ago`;
-    const diffHour = Math.floor(diffMin / 60);
-    if (diffHour < 24) return `${diffHour}h ago`;
-    return date.toLocaleDateString();
-  } catch {
-    return timestamp;
-  }
-};
-
-interface DetectionLogProps {
+interface RequestLogProps {
   readonly expanded?: boolean;
   readonly onViewAll?: () => void;
 }
 
-export default function DetectionLog({
-  expanded = false,
-  onViewAll,
-}: Readonly<DetectionLogProps>) {
-  // Get live requests from WebSocket
+const methodColors: Record<string, string> = {
+  GET: "bg-blue-100 text-blue-700 border-blue-200",
+  POST: "bg-green-100 text-green-700 border-green-200",
+  PUT: "bg-yellow-100 text-yellow-700 border-yellow-200",
+  DELETE: "bg-red-100 text-red-700 border-red-200",
+  PATCH: "bg-purple-100 text-purple-700 border-purple-200",
+};
+
+const statusColors = (status: number) => {
+  if (status === 200 || status === 201) return "bg-green-100 text-green-700";
+  if (status === 401) return "bg-orange-100 text-orange-700";
+  if (status === 403 || status === 404) return "bg-yellow-100 text-yellow-700";
+  if (status >= 500) return "bg-red-100 text-red-700";
+  if (status >= 400) return "bg-orange-100 text-orange-700";
+  return "bg-gray-100 text-gray-700";
+};
+
+export default function DetectionLog({ expanded = false }: Readonly<RequestLogProps>) {
   const rawRequests = useRequests();
   const { isConnected } = useConnectionStatus();
+  const [searchQuery, setSearchQuery] = useState("");
+  const [filterTab, setFilterTab] = useState<"all" | "401" | "errors">("all");
+  const [selectedEndpoint, setSelectedEndpoint] = useState<string>("all");
+  const [selectedStatus, setSelectedStatus] = useState<string>("all");
 
-  // Transform raw requests into display format
-  const liveRequests = useMemo<LiveRequest[]>(() => {
-    return rawRequests.map((req, index) => ({
+  // Transform and filter requests
+  const { allRequests, requests401, errorRequests, displayRequests, uniqueEndpoints, uniqueStatuses, hasMoreThan100 } = useMemo(() => {
+    // Only keep the most recent 100 entries
+    const recentRawRequests = rawRequests.slice(-100);
+    
+    const all = recentRawRequests.map((req, index) => ({
       id: `${req.timestamp}-${index}`,
-      timestamp: req.timestamp,
+      timestamp: new Date(req.timestamp).toLocaleString('en-US', {
+        month: 'short',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: true,
+      }),
       method: req.method,
-      path: req.path,
+      endpoint: req.path,
       status: req.response_status,
-      ip: req.client_ip,
-      username: req.username,
-      responseTime: req.processing_time_ms,
-      success: req.response_success,
+      ipAddress: req.client_ip,
+      responseTime: `${Math.round(req.processing_time_ms)}ms`,
+      userId: req.user || req.username || "–", // Fix: use 'user' field from data
     }));
-  }, [rawRequests]);
 
-  // Filter to show most relevant requests (failed ones first)
-  const displayRequests = useMemo(() => {
-    const sorted = [...liveRequests].sort((a, b) => {
-      // Failed requests first
-      if (!a.success && b.success) return -1;
-      if (a.success && !b.success) return 1;
-      return 0;
-    });
-    return sorted.slice(0, expanded ? 50 : 10);
-  }, [liveRequests, expanded]);
+    const errors401 = all.filter(r => r.status === 401);
+    const errors = all.filter(r => r.status >= 400);
+
+    // Get unique endpoints and statuses for dropdowns
+    const endpoints = Array.from(new Set(all.map(r => r.endpoint))).sort();
+    const statuses = Array.from(new Set(all.map(r => r.status))).sort((a, b) => a - b);
+
+    // Apply filters
+    let filtered = all;
+    
+    // Search filter
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(
+        r =>
+          r.endpoint.toLowerCase().includes(query) ||
+          r.ipAddress.toLowerCase().includes(query) ||
+          r.status.toString().includes(query)
+      );
+    }
+
+    // Endpoint filter
+    if (selectedEndpoint !== "all") {
+      filtered = filtered.filter(r => r.endpoint === selectedEndpoint);
+    }
+
+    // Status filter
+    if (selectedStatus !== "all") {
+      filtered = filtered.filter(r => r.status === parseInt(selectedStatus));
+    }
+
+    // Tab filter (applies after other filters)
+    if (filterTab === "401") {
+      filtered = filtered.filter(r => r.status === 401);
+    } else if (filterTab === "errors") {
+      filtered = filtered.filter(r => r.status >= 400);
+    }
+
+    return {
+      allRequests: all,
+      requests401: errors401,
+      errorRequests: errors,
+      displayRequests: expanded ? filtered : filtered,
+      uniqueEndpoints: endpoints,
+      uniqueStatuses: statuses,
+      hasMoreThan100: rawRequests.length > 100,
+    };
+  }, [rawRequests, searchQuery, filterTab, selectedEndpoint, selectedStatus, expanded]);
 
   return (
-    <Card className="bg-white border-gray-200">
+    <Card className={`bg-white border-gray-200 ${expanded ? 'h-full flex flex-col' : ''}`}>
       <CardHeader>
-        <div className="flex items-center justify-between">
+        <div className="flex items-start justify-between mb-4">
           <div>
-            <CardTitle className="text-gray-900 flex items-center gap-2">
-              Live Request Log
+            <CardTitle className="text-xl font-bold text-gray-900 flex items-center gap-2">
+              Request Logs
               {isConnected && (
-                <span className="flex items-center gap-1 text-sm font-normal text-green-600">
-                  <Activity className="w-3 h-3 animate-pulse" />
+                <span className="flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 text-xs font-medium rounded-full">
+                  <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
                   Live
                 </span>
               )}
             </CardTitle>
-            <CardDescription className="text-gray-600">
-              Real-time API requests and responses
+            <CardDescription className="text-gray-500 mt-1">
+              Monitor all API requests with detailed information
             </CardDescription>
           </div>
-          <Badge variant="outline" className="text-gray-600">
-            {liveRequests.length} total
-          </Badge>
+        </div>
+
+        {/* Search and Filters */}
+        <div className="flex gap-3 mt-4">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <Input
+              placeholder="Search by endpoint, IP, or status code..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-10 bg-gray-50 border-gray-200"
+            />
+          </div>
+          
+          {/* Endpoint Filter Dropdown */}
+          <DropdownMenu.Root>
+            <DropdownMenu.Trigger asChild>
+              <button className="px-4 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 flex items-center gap-2 text-gray-700 min-w-[160px] justify-between">
+                <div className="flex items-center gap-2">
+                  <Filter className="w-4 h-4" />
+                  {selectedEndpoint === "all" ? "All Endpoints" : selectedEndpoint}
+                </div>
+                <ChevronDown className="w-4 h-4" />
+              </button>
+            </DropdownMenu.Trigger>
+            <DropdownMenu.Portal>
+              <DropdownMenu.Content
+                className="bg-white rounded-lg shadow-lg border border-gray-200 p-1 min-w-[200px] max-h-[300px] overflow-y-auto z-50"
+                sideOffset={5}
+              >
+                <DropdownMenu.Item
+                  className="px-3 py-2 text-sm text-gray-900 hover:bg-gray-100 rounded cursor-pointer outline-none flex items-center justify-between"
+                  onSelect={() => setSelectedEndpoint("all")}
+                >
+                  All Endpoints
+                  {selectedEndpoint === "all" && <Check className="w-4 h-4" />}
+                </DropdownMenu.Item>
+                {uniqueEndpoints.map((endpoint) => (
+                  <DropdownMenu.Item
+                    key={endpoint}
+                    className="px-3 py-2 text-sm text-gray-900 hover:bg-gray-100 rounded cursor-pointer outline-none flex items-center justify-between font-mono"
+                    onSelect={() => setSelectedEndpoint(endpoint)}
+                  >
+                    {endpoint}
+                    {selectedEndpoint === endpoint && <Check className="w-4 h-4" />}
+                  </DropdownMenu.Item>
+                ))}
+              </DropdownMenu.Content>
+            </DropdownMenu.Portal>
+          </DropdownMenu.Root>
+
+          {/* Status Filter Dropdown */}
+          <DropdownMenu.Root>
+            <DropdownMenu.Trigger asChild>
+              <button className="px-4 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 flex items-center gap-2 text-gray-700 min-w-[140px] justify-between">
+                {selectedStatus === "all" ? "All Status" : selectedStatus}
+                <ChevronDown className="w-4 h-4" />
+              </button>
+            </DropdownMenu.Trigger>
+            <DropdownMenu.Portal>
+              <DropdownMenu.Content
+                className="bg-white rounded-lg shadow-lg border border-gray-200 p-1 min-w-[150px] max-h-[300px] overflow-y-auto z-50"
+                sideOffset={5}
+              >
+                <DropdownMenu.Item
+                  className="px-3 py-2 text-sm text-gray-900 hover:bg-gray-100 rounded cursor-pointer outline-none flex items-center justify-between"
+                  onSelect={() => setSelectedStatus("all")}
+                >
+                  All Status
+                  {selectedStatus === "all" && <Check className="w-4 h-4" />}
+                </DropdownMenu.Item>
+                {uniqueStatuses.map((status) => (
+                  <DropdownMenu.Item
+                    key={status}
+                    className="px-3 py-2 text-sm text-gray-900 hover:bg-gray-100 rounded cursor-pointer outline-none flex items-center justify-between"
+                    onSelect={() => setSelectedStatus(status.toString())}
+                  >
+                    {status}
+                    {selectedStatus === status.toString() && <Check className="w-4 h-4" />}
+                  </DropdownMenu.Item>
+                ))}
+              </DropdownMenu.Content>
+            </DropdownMenu.Portal>
+          </DropdownMenu.Root>
+        </div>
+
+        {/* Filter Tabs */}
+        <div className="flex gap-2 mt-4">
+          <button
+            onClick={() => setFilterTab("all")}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              filterTab === "all"
+                ? "bg-gray-900 text-white"
+                : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+            }`}
+          >
+            All Logs ({hasMoreThan100 ? '100+' : allRequests.length})
+          </button>
+          <button
+            onClick={() => setFilterTab("401")}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              filterTab === "401"
+                ? "bg-gray-900 text-white"
+                : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+            }`}
+          >
+            401 Unauthorized ({requests401.length > 100 ? '100+' : requests401.length})
+          </button>
+          <button
+            onClick={() => setFilterTab("errors")}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              filterTab === "errors"
+                ? "bg-gray-900 text-white"
+                : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+            }`}
+          >
+            All Errors ({errorRequests.length > 100 ? '100+' : errorRequests.length})
+          </button>
         </div>
       </CardHeader>
-      <CardContent>
+
+      <CardContent className={expanded ? 'flex-1 flex flex-col overflow-hidden' : ''}>
         {!isConnected && (
           <div className="p-4 mb-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-            <p className="text-sm text-yellow-800">
-              🔌 Connecting to live feed...
-            </p>
-          </div>
-        )}
-        
-        {liveRequests.length === 0 && isConnected && (
-          <div className="p-8 text-center text-gray-500">
-            <Activity className="w-12 h-12 mx-auto mb-2 opacity-50" />
-            <p>Waiting for requests...</p>
+            <p className="text-sm text-yellow-800">🔌 Connecting to live feed...</p>
           </div>
         )}
 
-        <div className="space-y-2">
-          {displayRequests.map((request) => (
-            <div
-              key={request.id}
-              className={`p-3 border rounded-lg hover:border-gray-300 transition-all ${
-                !request.success 
-                  ? 'bg-red-50 border-red-200' 
-                  : 'bg-gray-50 border-gray-200'
-              }`}
-            >
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex items-start gap-3 flex-1">
-                  <div className={`p-2 rounded-lg mt-0.5 ${
-                    !request.success ? 'bg-red-100' : 'bg-gray-100'
-                  }`}>
-                    {request.success ? (
-                      <CheckCircle className="w-4 h-4 text-green-600" />
-                    ) : (
-                      <XCircle className="w-4 h-4 text-red-600" />
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1 flex-wrap">
-                      <Badge
-                        className={`text-xs font-medium ${
-                          methodColors[request.method] || methodColors.GET
-                        }`}
-                      >
-                        {request.method}
-                      </Badge>
-                      <span className="font-mono text-sm text-gray-900 truncate">
-                        {request.path}
-                      </span>
-                      <Badge
-                        variant="outline"
-                        className={`text-xs ${statusColors(request.status)}`}
-                      >
-                        {request.status}
-                      </Badge>
-                    </div>
-                    <div className="flex items-center gap-4 text-xs text-gray-500 flex-wrap">
-                      <span className="flex items-center gap-1">
-                        <Shield className="w-3 h-3" />
-                        {request.ip}
-                      </span>
-                      {request.username && (
-                        <span className="font-medium">
-                          User: {request.username}
-                        </span>
-                      )}
-                      <span className="flex items-center gap-1">
-                        <Clock className="w-3 h-3" />
-                        {request.responseTime.toFixed(2)}ms
-                      </span>
-                      <span>{formatTimestamp(request.timestamp)}</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
+        {/* Fixed or flexible height container based on expanded mode */}
+        <div className={expanded ? 'flex-1 flex flex-col overflow-hidden' : 'h-[600px] flex flex-col'}>
+          {displayRequests.length === 0 && isConnected && (
+            <div className="flex-1 flex items-center justify-center text-gray-500">
+              <p>No requests found matching your filters</p>
             </div>
-          ))}
+          )}
+
+          {/* Table with internal scrolling */}
+          {displayRequests.length > 0 && (
+            <div className="overflow-y-auto overflow-x-auto flex-1">
+              <table className="w-full">
+                <thead className="sticky top-0 bg-white z-10 shadow-sm">
+                  <tr className="border-b border-gray-200">
+                    <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700 bg-gray-50">
+                      Timestamp
+                    </th>
+                    <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700 bg-gray-50">
+                      Method
+                    </th>
+                    <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700 bg-gray-50">
+                      Endpoint
+                    </th>
+                    <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700 bg-gray-50">
+                      Status
+                    </th>
+                    <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700 bg-gray-50">
+                      IP Address
+                    </th>
+                    <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700 bg-gray-50">
+                      Response Time
+                    </th>
+                    <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700 bg-gray-50">
+                      User ID
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {displayRequests.map((request, index) => (
+                    <tr
+                      key={request.id}
+                      className={`border-b border-gray-100 hover:bg-gray-50 transition-colors ${
+                        index % 2 === 0 ? "bg-white" : "bg-gray-50/50"
+                      }`}
+                    >
+                      <td className="py-3 px-4 text-sm text-gray-900">
+                        {request.timestamp}
+                      </td>
+                      <td className="py-3 px-4">
+                        <span
+                          className={`px-3 py-1 rounded-md text-xs font-medium border ${
+                            methodColors[request.method] || methodColors.GET
+                          }`}
+                        >
+                          {request.method}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 text-sm font-mono text-gray-900">
+                        {request.endpoint}
+                      </td>
+                      <td className="py-3 px-4">
+                        <span
+                          className={`px-3 py-1 rounded-md text-xs font-semibold ${statusColors(
+                            request.status
+                          )}`}
+                        >
+                          {request.status}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 text-sm text-gray-900">
+                        {request.ipAddress}
+                      </td>
+                      <td className="py-3 px-4 text-sm text-gray-900">
+                        {request.responseTime}
+                      </td>
+                      <td className="py-3 px-4 text-sm text-gray-500">
+                        {request.userId}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
-        
-        {!expanded && liveRequests.length > 10 && (
-          <Button
-            variant="outline"
-            className="w-full mt-4 border-gray-200 text-gray-600 hover:bg-gray-50 bg-white"
-            onClick={onViewAll}
-          >
-            View All {liveRequests.length} Requests
-          </Button>
-        )}
       </CardContent>
     </Card>
   );

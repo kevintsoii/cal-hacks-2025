@@ -21,6 +21,9 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - CHROMADB_URL=http://chromadb:9000
+      - ELASTICSEARCH_ENDPOINT=${ELASTICSEARCH_ENDPOINT}
+      - ELASTICSEARCH_API_KEY=${ELASTICSEARCH_API_KEY}
+      - GROQ_API_KEY=${GROQ_API_KEY}
     depends_on:
       redis:
         condition: service_started
