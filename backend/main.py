@@ -7,13 +7,17 @@ load_dotenv()
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from typing import List
 from sample import app as samples_app
 from testrunners import router as tests_router
 from db.redis import redis_client
 from db.elasticsearch import elasticsearch_client
 from api.websocket_routes import router as websocket_router
+from utils.rule_loader import load_agent_rules, get_rules_file_path
 import asyncio
 import logging
+import os
 from datetime import datetime
 
 # Setup logging
@@ -84,6 +88,70 @@ app.include_router(tests_router, tags=["tests"])
 
 # Include WebSocket router
 app.include_router(websocket_router, tags=["websocket"])
+
+# Pydantic model for agent rules
+class AgentRulesRequest(BaseModel):
+    rules: List[str]
+
+# Agent rules endpoints
+@app.get("/api/agent-rules/{agent_name}")
+async def get_agent_rules(agent_name: str):
+    """
+    Get custom rules for a specific agent.
+    """
+    if agent_name not in ["auth", "search", "general"]:
+        raise HTTPException(status_code=400, detail="Invalid agent name. Must be auth, search, or general")
+    
+    try:
+        rules_file = get_rules_file_path(agent_name)
+        
+        if not os.path.exists(rules_file):
+            return JSONResponse({"rules": []})
+        
+        with open(rules_file, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+        
+        # Filter out comments and empty lines
+        rules = []
+        for line in lines:
+            line = line.strip()
+            if line and not line.startswith('#'):
+                rules.append(line)
+        
+        return JSONResponse({"rules": rules, "count": len(rules)})
+    except Exception as e:
+        logger.error(f"Failed to read rules for {agent_name}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to read rules: {str(e)}")
+
+@app.post("/api/agent-rules/{agent_name}")
+async def save_agent_rules(agent_name: str, request: AgentRulesRequest):
+    """
+    Save custom rules for a specific agent.
+    """
+    if agent_name not in ["auth", "search", "general"]:
+        raise HTTPException(status_code=400, detail="Invalid agent name. Must be auth, search, or general")
+    
+    try:
+        rules_file = get_rules_file_path(agent_name)
+        
+        # Ensure directory exists
+        os.makedirs(os.path.dirname(rules_file), exist_ok=True)
+        
+        # Write rules to file
+        with open(rules_file, 'w', encoding='utf-8') as f:
+            f.write(f"# Custom Rules for {agent_name.title()} Agent\n")
+            f.write("# Add your custom rules below, one per line\n")
+            f.write(f"# These rules will be appended to the {agent_name.title()} Agent's system prompt\n\n")
+            
+            for rule in request.rules:
+                if rule.strip():  # Only write non-empty rules
+                    f.write(f"{rule.strip()}\n")
+        
+        logger.info(f"Saved {len(request.rules)} rules for {agent_name} agent")
+        return JSONResponse({"success": True, "count": len(request.rules)})
+    except Exception as e:
+        logger.error(f"Failed to save rules for {agent_name}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to save rules: {str(e)}")
 
 # Background task for periodic stats broadcasts
 async def broadcast_stats_periodically():
