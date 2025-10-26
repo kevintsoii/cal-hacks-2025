@@ -105,7 +105,7 @@ export default function DetectionLog({ expanded = false }: Readonly<RequestLogPr
       displayRequests: expanded ? filtered : filtered,
       uniqueEndpoints: endpoints,
       uniqueStatuses: statuses,
-      hasMoreThan100: rawRequests.length > 100,
+      hasMoreThan100: rawRequests.length >= 100,
     };
   }, [rawRequests, searchQuery, filterTab, selectedEndpoint, selectedStatus, expanded]);
 
@@ -233,7 +233,7 @@ export default function DetectionLog({ expanded = false }: Readonly<RequestLogPr
                 : "bg-gray-100 text-gray-700 hover:bg-gray-200"
             }`}
           >
-            401 Unauthorized ({requests401.length > 100 ? '100+' : requests401.length})
+            401 Unauthorized ({requests401.length >= 100 ? '100+' : requests401.length})
           </button>
           <button
             onClick={() => setFilterTab("errors")}
@@ -243,7 +243,7 @@ export default function DetectionLog({ expanded = false }: Readonly<RequestLogPr
                 : "bg-gray-100 text-gray-700 hover:bg-gray-200"
             }`}
           >
-            All Errors ({errorRequests.length > 100 ? '100+' : errorRequests.length})
+            All Errors ({errorRequests.length >= 100 ? '100+' : errorRequests.length})
           </button>
         </div>
       </CardHeader>

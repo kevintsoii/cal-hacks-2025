@@ -6,18 +6,19 @@ Handles initial data fetch and provides stats/anomaly detection.
 import logging
 from datetime import datetime, timedelta
 from typing import Dict, Any, Optional, List
+from zoneinfo import ZoneInfo
 from db.elasticsearch import elasticsearch_client
 
 logger = logging.getLogger(__name__)
 
 
-async def get_recent_logs(limit: int = 10) -> List[Dict[str, Any]]:
+async def get_recent_logs(limit: int = 100) -> List[Dict[str, Any]]:
     """
     Get the most recent logs from Elasticsearch.
     Used for initial WebSocket connection to send recent history.
     
     Args:
-        limit: Number of recent logs to fetch (default: 10)
+        limit: Number of recent logs to fetch (default: 100)
         
     Returns:
         List of document _source objects
@@ -210,19 +211,23 @@ async def get_hourly_activity(days: int = 7, interval: str = 'hour') -> Dict[str
         # Format response based on interval
         if interval == 'hour':
             day_buckets = aggs.get("activity_by_day", {}).get("buckets", [])
+            pacific_tz = ZoneInfo("America/Los_Angeles")
             
             # Format data for frontend
             activity_data = []
             for day_bucket in day_buckets:
                 day_timestamp = day_bucket["key_as_string"]
-                day_date = datetime.fromisoformat(day_timestamp.replace('Z', '+00:00'))
+                # Parse as UTC then convert to Pacific timezone to match ES aggregation
+                day_date = datetime.fromisoformat(day_timestamp.replace('Z', '+00:00')).astimezone(pacific_tz)
                 
                 hourly_buckets = day_bucket.get("hourly_activity", {}).get("buckets", [])
                 hourly_data = []
                 
                 for hour_bucket in hourly_buckets:
                     hour_timestamp = hour_bucket["key_as_string"]
-                    hour = datetime.fromisoformat(hour_timestamp.replace('Z', '+00:00')).hour
+                    # Convert to Pacific timezone for correct hour
+                    hour_dt = datetime.fromisoformat(hour_timestamp.replace('Z', '+00:00')).astimezone(pacific_tz)
+                    hour = hour_dt.hour
                     
                     avg_time = hour_bucket.get("avg_response_time", {}).get("value")
                     avg_response_time = round(avg_time, 2) if avg_time is not None else 0.0
@@ -253,10 +258,12 @@ async def get_hourly_activity(days: int = 7, interval: str = 'hour') -> Dict[str
             
         elif interval == 'day':
             daily_buckets = aggs.get("daily_activity", {}).get("buckets", [])
+            pacific_tz = ZoneInfo("America/Los_Angeles")
             
             daily_data = []
             for bucket in daily_buckets:
-                bucket_date = datetime.fromisoformat(bucket["key_as_string"].replace('Z', '+00:00'))
+                # Parse as UTC then convert to Pacific timezone to match ES aggregation
+                bucket_date = datetime.fromisoformat(bucket["key_as_string"].replace('Z', '+00:00')).astimezone(pacific_tz)
                 
                 avg_time = bucket.get("avg_response_time", {}).get("value")
                 avg_response_time = round(avg_time, 2) if avg_time is not None else 0.0
@@ -281,10 +288,12 @@ async def get_hourly_activity(days: int = 7, interval: str = 'hour') -> Dict[str
             
         else:  # week
             weekly_buckets = aggs.get("weekly_activity", {}).get("buckets", [])
+            pacific_tz = ZoneInfo("America/Los_Angeles")
             
             weekly_data = []
             for bucket in weekly_buckets:
-                bucket_date = datetime.fromisoformat(bucket["key_as_string"].replace('Z', '+00:00'))
+                # Parse as UTC then convert to Pacific timezone to match ES aggregation
+                bucket_date = datetime.fromisoformat(bucket["key_as_string"].replace('Z', '+00:00')).astimezone(pacific_tz)
                 
                 avg_time = bucket.get("avg_response_time", {}).get("value")
                 avg_response_time = round(avg_time, 2) if avg_time is not None else 0.0

@@ -32,9 +32,9 @@ async def websocket_elasticsearch(websocket: WebSocket):
     await manager.connect(websocket)
     
     try:
-        # Send initial data (last 10 logs)
+        # Send initial data (last 100 logs)
         logger.info("[WebSocket] Fetching initial logs for new client")
-        recent_logs = await get_recent_logs(limit=10)
+        recent_logs = await get_recent_logs(limit=100)
         
         if recent_logs:
             await websocket.send_json({

@@ -103,7 +103,7 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
             break;
 
           case 'initial_data':
-            // Initial batch of last 10 logs on connection
+            // Initial batch of last 100 logs on connection
             console.log(`📥 Received ${message.count} initial logs`);
             setRequests(message.data || []);
             break;
