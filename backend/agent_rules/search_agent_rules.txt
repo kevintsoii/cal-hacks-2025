@@ -1,0 +1,5 @@
+# Custom Rules for Search Agent
+# Add your custom rules below, one per line
+# These rules will be appended to the Search Agent's system prompt
+
+

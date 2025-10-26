@@ -1,0 +1,7 @@
+# Custom Rules for General Agent
+# Add your custom rules below, one per line
+# These rules will be appended to the General Agent's system prompt
+
+Flag any requests with unusual user agents (bots, scanners, curl)
+Increase severity for requests exceeding 100 requests per minute from a single IP
+Always monitor requests to sensitive admin endpoints

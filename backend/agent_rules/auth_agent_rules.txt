@@ -1,0 +1,5 @@
+# Custom Rules for Auth Agent
+# Add your custom rules below, one per line
+# These rules will be appended to the Auth Agent's system prompt
+
+
