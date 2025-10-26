@@ -7,6 +7,7 @@ import MetricsOverview from "@/components/Metrics-Overview";
 import EndpointStatus from "@/components/Endpoint-Status";
 import Navbar from "@/components/Navbar";
 import RunTests from "@/components/RunTests";
+import Mitigations from "@/components/Mitigations";
 import Chat from "./Chat";
 import AgentRules from "./AgentRules";
 import type { RunTestsTestType, RunTestsLogEntry } from "@/components/RunTests";
@@ -206,12 +207,10 @@ export default function Dashboard() {
             </div>
           )}
 
-          {/* Detections Tab - Empty for now */}
+          {/* Detections Tab */}
           {activeTab === "detections" && (
-            <div className="h-full w-full flex items-center justify-center">
-              <div className="text-center">
-                <p className="text-gray-500 text-lg">Detections page coming soon</p>
-              </div>
+            <div className="h-full w-full">
+              <Mitigations />
             </div>
           )}
 
