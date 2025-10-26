@@ -5,6 +5,7 @@ import Dashboard from './pages/Dashboard'
 import Login from './pages/Login'
 import UserSearch from './pages/UserSearch'
 import { WebSocketProvider } from './hooks/useWebSocket'
+import { ActivityDataProvider } from './hooks/useActivityData'
 
 function App() {
   return (
@@ -13,7 +14,9 @@ function App() {
         <Route path="/" element={<Home />} />
         <Route path="/dashboard" element={
           <WebSocketProvider>
-            <Dashboard />
+            <ActivityDataProvider>
+              <Dashboard />
+            </ActivityDataProvider>
           </WebSocketProvider>
         } />
         <Route path="/login" element={<Login />} />

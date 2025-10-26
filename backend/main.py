@@ -82,6 +82,26 @@ async def get_elasticsearch_sample():
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Elasticsearch error: {str(e)}")
 
+@app.get("/elastic/activity")
+async def get_activity_data(days: int = 7, interval: str = 'hour'):
+    """
+    Get activity trends for statistics visualization.
+    
+    Args:
+        days: Number of days to fetch (default: 7)
+        interval: Aggregation interval - 'hour', 'day', or 'week' (default: 'hour')
+    """
+    from websocket import get_hourly_activity
+    
+    try:
+        activity_data = await get_hourly_activity(days=days, interval=interval)
+        if activity_data:
+            return JSONResponse(activity_data)
+        else:
+            return JSONResponse({"data": [], "message": "No activity data available"})
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching activity data: {str(e)}")
+
 # Include the tests router
 app.include_router(tests_router, tags=["tests"])
 

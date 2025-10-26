@@ -191,7 +191,7 @@ export default function Chat() {
             <h4 className="font-semibold text-gray-800">{chartData.title}</h4>
             <span className="text-xs text-gray-500 ml-auto">Pie Chart</span>
           </div>
-          <ResponsiveContainer width="100%" height={300}>
+          <ResponsiveContainer width="100%" height={350}>
             <PieChart>
               <Pie
                 data={chartDataFormatted}
@@ -223,7 +223,7 @@ export default function Chat() {
             <h4 className="font-semibold text-gray-800">{chartData.title}</h4>
             <span className="text-xs text-gray-500 ml-auto">Line Chart</span>
           </div>
-          <ResponsiveContainer width="100%" height={280}>
+          <ResponsiveContainer width="100%" height={350}>
             <LineChart data={chartDataFormatted} margin={{ top: 5, right: 30, left: 0, bottom: 5 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
               <XAxis dataKey="name" stroke="#6b7280" style={{ fontSize: '12px' }} />
@@ -253,7 +253,7 @@ export default function Chat() {
           <h4 className="font-semibold text-gray-800">{chartData.title}</h4>
           <span className="text-xs text-gray-500 ml-auto">Bar Chart</span>
         </div>
-        <ResponsiveContainer width="100%" height={Math.max(250, chartDataFormatted.length * 50)}>
+        <ResponsiveContainer width="100%" height={350}>
           <BarChart 
             data={chartDataFormatted} 
             layout="vertical"

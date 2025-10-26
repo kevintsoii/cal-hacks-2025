@@ -5,7 +5,6 @@ import { X, AlertCircle, Clock, CheckCircle, Ban, XCircle, Pause, Shield } from 
 import DetectionLog from "@/components/Detection-Log";
 import MetricsOverview from "@/components/Metrics-Overview";
 import EndpointStatus from "@/components/Endpoint-Status";
-import ThreatAnalysis from "@/components/Threat-analysis";
 import Navbar from "@/components/Navbar";
 import RunTests from "@/components/RunTests";
 import Chat from "./Chat";
@@ -192,29 +191,24 @@ export default function Dashboard() {
         </header>
 
         {/* Main Content */}
-        <main className="px-6 py-8 mt-[89px]">
+        <main className={activeTab === "detections" ? "fixed inset-0 ml-64 mt-[89px] px-6 py-8" : "px-6 py-8 mt-[89px]"}>
           {/* Overview Tab */}
           {activeTab === "overview" && (
             <div className="space-y-8">
               {/* Key Metrics */}
               <MetricsOverview />
 
-              {/* Threat Analysis & Recent Detections */}
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <div className="lg:col-span-2">
-                  <DetectionLog onViewAll={() => setActiveTab("detections")} />
-                </div>
-                <div>
-                  <ThreatAnalysis />
-                </div>
-              </div>
+              {/* Recent Detections - Full Width */}
+              <DetectionLog onViewAll={() => setActiveTab("detections")} />
             </div>
           )}
 
-          {/* Detections Tab */}
+          {/* Detections Tab - Empty for now */}
           {activeTab === "detections" && (
-            <div className="space-y-6">
-              <DetectionLog expanded />
+            <div className="h-full w-full flex items-center justify-center">
+              <div className="text-center">
+                <p className="text-gray-500 text-lg">Detections page coming soon</p>
+              </div>
             </div>
           )}
 
