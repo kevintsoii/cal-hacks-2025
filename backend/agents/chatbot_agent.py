@@ -330,15 +330,7 @@ If no chart is appropriate or truly no data, set chart_suggestion to null.
             message_text = ai_message
             
             # Strip markdown code blocks if present
-            cleaned_message = ai_message.strip()
-            if cleaned_message.startswith("```"):
-                # Remove opening ```json or ``` and closing ```
-                lines = cleaned_message.split('\n')
-                if lines[0].startswith("```"):
-                    lines = lines[1:]  # Remove first line with ```
-                if lines and lines[-1].strip() == "```":
-                    lines = lines[:-1]  # Remove last line with ```
-                cleaned_message = '\n'.join(lines).strip()
+            cleaned_message = ai_message.strip().lstrip('`').rstrip('`')
             
             try:
                 parsed = json.loads(cleaned_message)

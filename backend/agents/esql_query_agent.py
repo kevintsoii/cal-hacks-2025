@@ -9,7 +9,7 @@ import os
 import json
 import httpx
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import uuid4
 
 from dotenv import load_dotenv
@@ -244,8 +244,10 @@ QUERY GENERATION GUIDELINES:
    - No time specified → last 24 hours (NOW() - 24 hours)
    - "recent" / "latest" → last 24 hours
    - "last hour" / "past hour" → NOW() - 1 hour (only when explicitly mentioned)
-   - "today" → NOW() - 24 hours
-   - "this week" → NOW() - 7 days
+   - "today" / "last day" / "for the last day" → NOW() - 24 hours
+   - "this week" / "last week" → NOW() - 7 days
+   - "last N hours" → NOW() - N hours
+   - "last N days" → NOW() - (N * 24) hours
 
 2. USERNAME HANDLING:
    - ALWAYS check BOTH fields: (user == "X" OR body_json.username == "X")
