@@ -14,6 +14,7 @@ from testrunners import router as tests_router
 from db.redis import redis_client
 from db.elasticsearch import elasticsearch_client
 from api.websocket_routes import router as websocket_router
+from api.rules_routes import router as calibration_rules_router
 from utils.rule_loader import load_agent_rules, get_rules_file_path
 import asyncio
 import logging
@@ -218,6 +219,9 @@ app.include_router(tests_router, tags=["tests"])
 
 # Include WebSocket router
 app.include_router(websocket_router, tags=["websocket"])
+
+# Include calibration rules router (ChromaDB-based custom rules)
+app.include_router(calibration_rules_router, tags=["calibration-rules"])
 
 # Pydantic model for agent rules
 class AgentRulesRequest(BaseModel):

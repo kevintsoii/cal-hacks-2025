@@ -225,6 +225,169 @@ async def clear_all():
         raise HTTPException(status_code=500, detail=f"Error clearing items: {str(e)}")
 
 
+# ============================================================================
+# CALIBRATION AGENT CUSTOM RULES ENDPOINTS
+# ============================================================================
+
+# Get or create custom_rules collection
+custom_rules_collection = client.get_or_create_collection(
+    name="custom_rules",
+    metadata={"description": "User-defined custom security rules for Calibration Agent"}
+)
+
+
+class AddRuleRequest(BaseModel):
+    rule_id: str
+    original_text: str
+    refined_text: str
+    category: str
+    severity: str
+    timestamp: str
+
+
+@app.post("/rules/add")
+async def add_rule(request: AddRuleRequest):
+    """Add a custom security rule to ChromaDB."""
+    try:
+        logger.info(f"Adding rule: {request.rule_id}")
+        
+        # Use refined_text as the document for semantic search
+        custom_rules_collection.add(
+            ids=[request.rule_id],
+            documents=[request.refined_text],
+            metadatas=[{
+                "original_text": request.original_text,
+                "refined_text": request.refined_text,
+                "category": request.category,
+                "severity": request.severity,
+                "timestamp": request.timestamp
+            }]
+        )
+        
+        logger.info(f"Rule {request.rule_id} added successfully")
+        
+        return {
+            "success": True,
+            "id": request.rule_id,
+            "message": "Rule added successfully"
+        }
+    except Exception as e:
+        logger.error(f"Error adding rule: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error adding rule: {str(e)}")
+
+
+@app.get("/rules/all")
+async def get_all_rules():
+    """Retrieve all custom security rules."""
+    try:
+        logger.info("Fetching all custom rules")
+        
+        # Get all items from custom_rules collection
+        results = custom_rules_collection.get()
+        
+        logger.info(f"Raw ChromaDB results: ids={len(results.get('ids', []))} items")
+        
+        if not results.get("ids") or len(results["ids"]) == 0:
+            logger.info("No rules found in collection")
+            return {"rules": [], "count": 0}
+        
+        # Transform to the expected format
+        rules = []
+        ids = results["ids"]
+        metadatas = results.get("metadatas", [])
+        
+        for i, rule_id in enumerate(ids):
+            metadata = metadatas[i] if i < len(metadatas) else {}
+            rule = {
+                "id": rule_id,
+                "original_text": metadata.get("original_text", ""),
+                "refined_text": metadata.get("refined_text", ""),
+                "category": metadata.get("category", "general"),
+                "severity": metadata.get("severity", "medium"),
+                "timestamp": metadata.get("timestamp", "")
+            }
+            rules.append(rule)
+        
+        logger.info(f"Returning {len(rules)} rules")
+        
+        return {
+            "rules": rules,
+            "count": len(rules)
+        }
+    except Exception as e:
+        logger.error(f"Error fetching rules: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error fetching rules: {str(e)}")
+
+
+@app.delete("/rules/{rule_id}")
+async def delete_rule(rule_id: str):
+    """Delete a custom security rule."""
+    try:
+        logger.info(f"Deleting rule: {rule_id}")
+        
+        # Check if rule exists
+        existing = custom_rules_collection.get(ids=[rule_id])
+        if not existing["ids"]:
+            raise HTTPException(status_code=404, detail=f"Rule {rule_id} not found")
+        
+        # Delete the rule
+        custom_rules_collection.delete(ids=[rule_id])
+        
+        logger.info(f"Rule {rule_id} deleted successfully")
+        
+        return {
+            "success": True,
+            "message": f"Rule {rule_id} deleted"
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting rule: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error deleting rule: {str(e)}")
+
+
+@app.get("/rules/query")
+async def query_rules(query_text: str, k: int = 5, category: Optional[str] = None):
+    """Query custom rules using semantic search."""
+    try:
+        logger.info(f"Querying rules: '{query_text}', k={k}, category={category}")
+        
+        where = {"category": category} if category else None
+        
+        results = custom_rules_collection.query(
+            query_texts=[query_text],
+            n_results=k,
+            where=where
+        )
+        
+        if not results.get("ids") or not results["ids"][0]:
+            return {"rules": [], "count": 0}
+        
+        rules = []
+        for i, rule_id in enumerate(results["ids"][0]):
+            metadata = results["metadatas"][0][i] if results.get("metadatas") else {}
+            distance = results["distances"][0][i] if results.get("distances") else 1.0
+            
+            rule = {
+                "id": rule_id,
+                "original_text": metadata.get("original_text", ""),
+                "refined_text": metadata.get("refined_text", ""),
+                "category": metadata.get("category", "general"),
+                "severity": metadata.get("severity", "medium"),
+                "timestamp": metadata.get("timestamp", ""),
+                "similarity_score": 1.0 - distance
+            }
+            rules.append(rule)
+        
+        return {
+            "rules": rules,
+            "count": len(rules)
+        }
+    except Exception as e:
+        logger.error(f"Error querying rules: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error querying rules: {str(e)}")
+
+
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=9000)
 
