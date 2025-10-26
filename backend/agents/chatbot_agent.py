@@ -471,6 +471,83 @@ async def shutdown(ctx: Context):
     ctx.logger.info("Chatbot agent shutting down")
 
 
+# Chat Protocol Message Handlers
+@chat_protocol.on_message(ChatMessage)
+async def handle_chat_message(ctx: Context, sender: str, msg: ChatMessage):
+    """
+    Handle incoming chat messages from DeltaV or other agents.
+    Processes natural language queries about security data.
+    """
+    # Send acknowledgement
+    await ctx.send(
+        sender,
+        ChatAcknowledgement(timestamp=datetime.now(), acknowledged_msg_id=msg.msg_id),
+    )
+    
+    # Collect all text chunks
+    text = ''
+    for item in msg.content:
+        if isinstance(item, TextContent):
+            text += item.text
+    
+    ctx.logger.info(f"[CHATBOT] Received chat message: {text[:100]}...")
+    
+    try:
+        # Try to parse as JSON first (for structured queries)
+        try:
+            parsed_data = json.loads(text)
+            query_text = parsed_data.get("query", text)
+            session_id = parsed_data.get("session_id", sender)
+        except json.JSONDecodeError:
+            # If not JSON, treat as plain text query
+            query_text = text
+            session_id = sender
+        
+        # Create QueryRequest
+        query_request = QueryRequest(query=query_text, session_id=session_id)
+        
+        # Process the query using the existing handle_query logic
+        result = await handle_query(ctx, query_request)
+        
+        # Format response for chat
+        if result.success:
+            response_text = result.message
+            
+            # Add chart info if available
+            if result.chart_data:
+                chart_type = result.chart_data.get("type", "chart")
+                chart_title = result.chart_data.get("title", "Data visualization")
+                response_text += f"\n\n📊 Chart available: {chart_title} ({chart_type})"
+            
+            response = f"✓ Query processed successfully!\n\n{response_text}"
+        else:
+            response = f"✗ Error processing query: {result.error or result.message}"
+            
+    except Exception as e:
+        ctx.logger.error(f"[CHATBOT] Error processing chat message: {e}")
+        response = f"✗ An error occurred while processing your query: {str(e)}"
+    
+    # Send response back
+    await ctx.send(sender, ChatMessage(
+        timestamp=datetime.now(),
+        msg_id=str(asyncio.current_task().get_name()) if asyncio.current_task() else "response",
+        content=[
+            TextContent(type="text", text=response),
+            EndSessionContent(type="end-session"),
+        ]
+    ))
+
+
+@chat_protocol.on_message(ChatAcknowledgement)
+async def handle_chat_ack(ctx: Context, sender: str, msg: ChatAcknowledgement):
+    """Handle chat acknowledgements."""
+    pass
+
+
+# Include the chat protocol
+agent.include(chat_protocol, publish_manifest=True)
+
+
 if __name__ == "__main__":
     agent.run()
 

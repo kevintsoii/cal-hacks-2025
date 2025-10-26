@@ -21,7 +21,8 @@ import sys
 sys.path.append(str(Path(__file__).parent.parent))
 
 from dotenv import load_dotenv
-from uagents import Agent, Context
+from uagents import Agent, Context, Protocol
+from uagents_core.contrib.protocols.chat import ChatAcknowledgement, ChatMessage, EndSessionContent, TextContent, chat_protocol_spec
 from typing import List, Dict, Optional
 
 # Import ChromaDB RAG implementation
@@ -459,6 +460,76 @@ async def apply_to_redis(ctx: Context, mitigation: Mitigation):
     except Exception as e:
         ctx.logger.error(f"[CALIBRATION] Error applying to Redis: {e}")
         ctx.logger.error(f"[CALIBRATION] Mitigation will not be enforced by middleware!")
+
+
+# Setup Chat Protocol support
+chat_protocol = Protocol(spec=chat_protocol_spec)
+
+@chat_protocol.on_message(ChatMessage)
+async def handle_chat_message(ctx: Context, sender: str, msg: ChatMessage):
+    # send the acknowledgement for receiving the message
+    await ctx.send(
+        sender,
+        ChatAcknowledgement(timestamp=datetime.now(timezone.utc), acknowledged_msg_id=msg.msg_id),
+    )
+ 
+    # collect up all the text chunks
+    text = ''
+    for item in msg.content:
+        if isinstance(item, TextContent):
+            text += item.text
+    
+    try:
+        # Try to parse the text as JSON to create a MitigationBatch
+        parsed_data = json.loads(text)
+        
+        # Handle different input formats
+        if isinstance(parsed_data, dict):
+            # Check if it has a "mitigations" key (wrapped format)
+            if "mitigations" in parsed_data:
+                mitigation_batch = MitigationBatch(**parsed_data)
+            else:
+                # Treat the dict as a single mitigation and wrap it in a batch
+                mitigation = Mitigation(**parsed_data)
+                mitigation_batch = MitigationBatch(
+                    mitigations=[mitigation],
+                    source_agent=parsed_data.get("source_agent", "unknown")
+                )
+        elif isinstance(parsed_data, list):
+            # Direct list of mitigations (unwrapped format)
+            mitigation_batch = MitigationBatch(
+                mitigations=[Mitigation(**m) for m in parsed_data],
+                source_agent="unknown"
+            )
+        else:
+            response = f'Could not parse mitigation batch. Received type: {type(parsed_data).__name__}'
+            raise ValueError(response)
+        
+        # Process the mitigation batch
+        await handle_mitigation_batch(ctx, sender, mitigation_batch)
+        
+        response = f'Mitigation batch received and processed successfully. {len(mitigation_batch.mitigations)} mitigation(s) calibrated and applied.'
+    except json.JSONDecodeError as e:
+        response = f'Could not parse JSON from the message: {str(e)}'
+    except Exception as e:
+        response = f'Could not process mitigation batch: {str(e)}'
+        ctx.logger.error(f"[CALIBRATION] Error processing chat message: {e}")
+
+    # send the response back to the user
+    await ctx.send(sender, ChatMessage(
+        timestamp=datetime.now(timezone.utc),
+        msg_id=uuid4(),
+        content=[
+            TextContent(type="text", text=response),
+            EndSessionContent(type="end-session"),
+        ]
+    ))
+
+@chat_protocol.on_message(ChatAcknowledgement)
+async def handle_chat_ack(ctx: Context, sender: str, msg: ChatAcknowledgement):
+    pass
+
+agent.include(chat_protocol, publish_manifest=True)
 
 
 if __name__ == "__main__":
