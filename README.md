@@ -13,6 +13,44 @@ An intelligent API security solution that leverages AI agents and Large Language
 - **Elasticsearch Integration**: Comprehensive logging and querying of API traffic
 - **WebSocket Updates**: Live streaming of security events to the frontend
 
+---
+
+## 🚀 Getting Started
+
+### Prerequisites
+
+- Docker and Docker Compose: https://www.docker.com/
+- Elasticsearch instance (cloud): https://cloud.elastic.co/serverless-registration
+- Groq Dev Tier account: https://console.groq.com/docs/overview
+- ReCAPTCHA account (optional to make captchas work): https://developers.google.com/recaptcha/intro
+
+### Run
+
+1. Create a `.env` file in the `backend/` directory:
+```bash
+GROQ_API_KEY=your_groq_api_key
+ELASTICSEARCH_ENDPOINT=your_elasticsearch_url
+ELASTICSEARCH_API_KEY=your_elasticsearch_api_key
+RECAPTCHA_SECRET_KEY=your_recaptcha_secret_key_optional
+```
+ 
+2. **Start all services with Docker Compose**
+```bash
+docker-compose up --build
+```
+
+This will start:
+- Backend API (port 8000)
+- All AI agents (ports 8001-8007)
+- Frontend (port 5173)
+- Redis (port 6379)
+- ChromaDB (port 9000)
+
+3. **Access the application**
+- Frontend: http://localhost:5173
+
+---
+
 ## 🏗️ Architecture
 
 ### Request Flow
@@ -92,50 +130,6 @@ Progressive mitigation strategy based on threat severity:
 - **Docker**: Containerization
 - **Docker Compose**: Multi-container orchestration
 
-## 🚀 Getting Started
-
-### Prerequisites
-
-- Docker and Docker Compose
-- Elasticsearch instance (cloud)
-- Groq account
-- ReCAPTCHA account
-
-### Environment Variables
-
-Create a `.env` file in the `backend/` directory:
-
-```bash
-# LLM Provider
-GROQ_API_KEY=your_groq_api_key
-ELASTICSEARCH_ENDPOINT=your_elasticsearch_url
-ELASTICSEARCH_API_KEY=your_elasticsearch_api_key
-RECAPTCHA_SECRET_KEY=your_recaptcha_secret_key
-```
-
-### Installation
-
-1. **Clone the repository**
-```bash
-git clone <repository-url>
-cd cal-hacks-2025
-```
-
-2. **Start all services with Docker Compose**
-```bash
-docker-compose up --build
-```
-
-This will start:
-- Backend API (port 8000)
-- All AI agents (ports 8001-8007)
-- Frontend (port 5173)
-- Redis (port 6379)
-- ChromaDB (port 9000)
-
-3. **Access the application**
-- Frontend Dashboard: http://localhost:5173
-- Backend API: http://localhost:8000
 
 ## 📊 Usage
 
@@ -214,6 +208,8 @@ Each specialized agent follows rules defined in `backend/agent_rules/`:
 - `general_agent_rules.txt`: General traffic anomalies
 
 Rules can be updated through the dashboard's Agent Rules page.
+
+---
 
 ## How we built it
 
