@@ -110,7 +110,7 @@ export default function DetectionLog({ expanded = false }: Readonly<RequestLogPr
   }, [rawRequests, searchQuery, filterTab, selectedEndpoint, selectedStatus, expanded]);
 
   return (
-    <Card className={`bg-white border-gray-200 ${expanded ? 'h-full flex flex-col' : ''}`}>
+    <Card data-section="detection-log" className={`bg-white border-gray-200 ${expanded ? 'h-full flex flex-col' : ''}`}>
       <CardHeader>
         <div className="flex items-start justify-between mb-4">
           <div>

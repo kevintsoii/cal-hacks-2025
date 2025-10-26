@@ -1,148 +1,196 @@
 "use client";
 
-import { TrendingUp, AlertTriangle, Shield, Zap } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useState, useEffect } from "react";
+import { Shield, Activity, Target, TrendingUp, AlertTriangle } from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
 import ActivityChart from "@/components/Activity-Chart";
 
-const metrics = [
-  {
-    title: "Requests Protected",
-    value: "2.4M",
-    percentage: 94,
-    icon: Shield,
-    color: "text-blue-500",
-    strokeColor: "stroke-blue-500",
-    bgColor: "bg-blue-500",
-  },
-  {
-    title: "Threats Blocked",
-    value: "1,247",
-    percentage: 87,
-    icon: AlertTriangle,
-    color: "text-red-500",
-    strokeColor: "stroke-red-500",
-    bgColor: "bg-red-500",
-  },
-  {
-    title: "Success Rate",
-    value: "99.5%",
-    percentage: 99.5,
-    icon: TrendingUp,
-    color: "text-green-500",
-    strokeColor: "stroke-green-500",
-    bgColor: "bg-green-500",
-  },
-  {
-    title: "Avg Response",
-    value: "45ms",
-    percentage: 91,
-    icon: Zap,
-    color: "text-purple-500",
-    strokeColor: "stroke-purple-500",
-    bgColor: "bg-purple-500",
-  },
-];
-
-interface CircularProgressProps {
-  readonly percentage: number;
-  readonly strokeColor: string;
-  readonly size?: number;
+interface MetricsData {
+  total_requests: number;
+  total_mitigations: number;
+  active_mitigations: number;
+  threat_types: Record<string, number>;
 }
 
-function CircularProgress({
-  percentage,
-  strokeColor,
-  size = 120,
-}: Readonly<CircularProgressProps>) {
-  const radius = 50;
-  const circumference = 2 * Math.PI * radius;
-  const strokeDashoffset = circumference - (percentage / 100) * circumference;
+const formatNumber = (num: number): string => {
+  if (num >= 1000000) {
+    return `${(num / 1000000).toFixed(1)}M`;
+  }
+  if (num >= 1000) {
+    return `${(num / 1000).toFixed(1)}K`;
+  }
+  return num.toLocaleString();
+};
 
-  return (
-    <svg width={size} height={size} className="transform -rotate-90">
-      {/* Background circle */}
-      <circle
-        cx={size / 2}
-        cy={size / 2}
-        r={radius}
-        stroke="currentColor"
-        strokeWidth="8"
-        fill="none"
-        className="text-gray-200"
-      />
-      {/* Progress circle */}
-      <circle
-        cx={size / 2}
-        cy={size / 2}
-        r={radius}
-        stroke="currentColor"
-        strokeWidth="8"
-        fill="none"
-        strokeLinecap="round"
-        className={strokeColor}
-        style={{
-          strokeDasharray: circumference,
-          strokeDashoffset: strokeDashoffset,
-          transition: "stroke-dashoffset 0.5s ease-in-out",
-        }}
-      />
-    </svg>
-  );
+interface MetricsOverviewProps {
+  onNavigateToDetections?: (tab: 'active' | 'history') => void;
 }
 
-export default function MetricsOverview() {
+export default function MetricsOverview({ onNavigateToDetections }: MetricsOverviewProps) {
+  const [metrics, setMetrics] = useState<MetricsData>({
+    total_requests: 0,
+    total_mitigations: 0,
+    active_mitigations: 0,
+    threat_types: {},
+  });
+  const [loading, setLoading] = useState(true);
+
+  const fetchMetrics = async () => {
+    try {
+      const response = await fetch("http://localhost:8000/metrics/overview");
+      if (response.ok) {
+        const data = await response.json();
+        setMetrics(data.metrics);
+      }
+    } catch (error) {
+      console.error("Error fetching metrics:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchMetrics();
+    const interval = setInterval(fetchMetrics, 10000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const handleTotalRequestsClick = () => {
+    // Scroll to Detection Log section
+    const detectionLogElement = document.querySelector('[data-section="detection-log"]');
+    if (detectionLogElement) {
+      detectionLogElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  };
+
+  const handleTotalMitigationsClick = () => {
+    if (onNavigateToDetections) {
+      onNavigateToDetections('history');
+    }
+  };
+
+  const handleActiveMitigationsClick = () => {
+    if (onNavigateToDetections) {
+      onNavigateToDetections('active');
+    }
+  };
+
   return (
-    <div className="space-y-6">
-      {/* Circular Progress Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {metrics.map((metric) => {
-          const Icon = metric.icon;
-          return (
-            <Card
-              key={metric.title}
-              className="bg-white border-gray-200 hover:border-gray-300 transition-all hover:shadow-lg"
-            >
-              <CardHeader className="pb-2">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-sm font-medium text-gray-600">
-                    {metric.title}
-                  </CardTitle>
-                  <div className={`p-2 ${metric.bgColor} rounded-lg`}>
-                    <Icon className="w-4 h-4 text-white" />
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent className="flex flex-col items-center pt-4">
-                {/* Circular Progress */}
-                <div className="relative">
-                  <CircularProgress
-                    percentage={metric.percentage}
-                    strokeColor={metric.strokeColor}
-                    size={120}
-                  />
-                  {/* Center text */}
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <div className="text-center">
-                      <div className={`text-2xl font-bold ${metric.color}`}>
-                        {metric.percentage}%
-                      </div>
-                      <div className="text-xs text-gray-500">efficiency</div>
-                    </div>
-                  </div>
-                </div>
-                {/* Value */}
-                <div className="mt-4 text-center">
-                  <span className="text-3xl font-bold text-gray-900">
-                    {metric.value}
-                  </span>
-                </div>
-              </CardContent>
-            </Card>
-          );
-        })}
+    <div className="space-y-8">
+      {/* Hero Metrics Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Total Requests - Large Featured Card */}
+        <Card 
+          className="relative overflow-hidden bg-gradient-to-br from-blue-500 via-blue-600 to-cyan-600 border-0 shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 animate-fade-in-up cursor-pointer" 
+          style={{ animationDelay: '0ms' }}
+          onClick={handleTotalRequestsClick}
+        >
+          <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-16 -mt-16"></div>
+          <div className="absolute bottom-0 left-0 w-24 h-24 bg-white/10 rounded-full -ml-12 -mb-12"></div>
+          
+          <CardContent className="relative pt-4 pb-4">
+            <div className="flex items-start justify-between mb-3">
+              <div className="p-3 bg-white/20 backdrop-blur-sm rounded-xl">
+                <Activity className="w-6 h-6 text-white" />
+              </div>
+              <div className="flex items-center gap-1 text-white/90 text-xs font-medium">
+                <TrendingUp className="w-3 h-3" />
+                <span>Live</span>
+              </div>
+            </div>
+            
+            <div className="space-y-1">
+              <p className="text-white/80 text-sm font-medium uppercase tracking-wider">
+                Total Requests
+              </p>
+              <div className="flex items-baseline gap-2">
+                <h3 className="text-4xl font-black text-white">
+                  {loading ? "—" : formatNumber(metrics.total_requests)}
+                </h3>
+              </div>
+              <p className="text-white/70 text-xs">
+                {loading ? "Loading..." : `${metrics.total_requests.toLocaleString()} API calls processed`}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Total Mitigations - Large Featured Card */}
+        <Card 
+          className="relative overflow-hidden bg-gradient-to-br from-orange-500 via-orange-600 to-red-600 border-0 shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 animate-fade-in-up cursor-pointer" 
+          style={{ animationDelay: '100ms' }}
+          onClick={handleTotalMitigationsClick}
+        >
+          <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-16 -mt-16"></div>
+          <div className="absolute bottom-0 left-0 w-24 h-24 bg-white/10 rounded-full -ml-12 -mb-12"></div>
+          
+          <CardContent className="relative pt-4 pb-4">
+            <div className="flex items-start justify-between mb-3">
+              <div className="p-3 bg-white/20 backdrop-blur-sm rounded-xl">
+                <Target className="w-6 h-6 text-white" />
+              </div>
+              <div className="flex items-center gap-1 text-white/90 text-xs font-medium">
+                <AlertTriangle className="w-3 h-3" />
+                <span>Total</span>
+              </div>
+            </div>
+            
+            <div className="space-y-1">
+              <p className="text-white/80 text-sm font-medium uppercase tracking-wider">
+                Total Mitigations
+              </p>
+              <div className="flex items-baseline gap-2">
+                <h3 className="text-4xl font-black text-white">
+                  {loading ? "—" : formatNumber(metrics.total_mitigations)}
+                </h3>
+              </div>
+              <p className="text-white/70 text-xs">
+                {loading ? "Loading..." : `${metrics.total_mitigations.toLocaleString()} threats neutralized`}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Active Mitigations - Large Featured Card */}
+        <Card 
+          className="relative overflow-hidden bg-gradient-to-br from-red-600 via-pink-600 to-rose-700 border-0 shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 animate-fade-in-up cursor-pointer" 
+          style={{ animationDelay: '200ms' }}
+          onClick={handleActiveMitigationsClick}
+        >
+          <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-16 -mt-16"></div>
+          <div className="absolute bottom-0 left-0 w-24 h-24 bg-white/10 rounded-full -ml-12 -mb-12"></div>
+          
+          <CardContent className="relative pt-4 pb-4">
+            <div className="flex items-start justify-between mb-3">
+              <div className="p-3 bg-white/20 backdrop-blur-sm rounded-xl">
+                <Shield className="w-6 h-6 text-white" />
+              </div>
+              <div className="flex items-center">
+                <span className="relative flex h-3 w-3">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-3 w-3 bg-white"></span>
+                </span>
+              </div>
+            </div>
+            
+            <div className="space-y-1">
+              <p className="text-white/80 text-sm font-medium uppercase tracking-wider">
+                Active Mitigations
+              </p>
+              <div className="flex items-baseline gap-2">
+                <h3 className="text-4xl font-black text-white">
+                  {loading ? "—" : metrics.active_mitigations}
+                </h3>
+              </div>
+              <p className="text-white/70 text-xs">
+                {loading ? "Loading..." : `${metrics.active_mitigations} currently blocking threats`}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
-      {/* Trend Chart */}
+      {/* Activity Chart */}
       <ActivityChart />
     </div>
   );

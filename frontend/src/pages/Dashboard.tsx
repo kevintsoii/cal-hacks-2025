@@ -36,6 +36,7 @@ export default function Dashboard() {
     "overview" | "detections" | "endpoints" | "run-tests" | "chat" | "agent-rules"
   >("overview");
   const [showSettings, setShowSettings] = useState(false);
+  const [mitigationTab, setMitigationTab] = useState<'active' | 'history'>('active');
 
   const getTabTitle = () => {
     switch (activeTab) {
@@ -52,6 +53,11 @@ export default function Dashboard() {
       default:
         return "Overview";
     }
+  };
+
+  const handleNavigateToDetections = (tab: 'active' | 'history') => {
+    setMitigationTab(tab);
+    setActiveTab('detections');
   };
   
   const [timelineLevels, setTimelineLevels] = useState<MitigationLevel[]>([
@@ -200,7 +206,7 @@ export default function Dashboard() {
           {activeTab === "overview" && (
             <div className="space-y-8">
               {/* Key Metrics */}
-              <MetricsOverview />
+              <MetricsOverview onNavigateToDetections={handleNavigateToDetections} />
 
               {/* Recent Detections - Full Width */}
               <DetectionLog onViewAll={() => setActiveTab("detections")} />
@@ -210,7 +216,7 @@ export default function Dashboard() {
           {/* Detections Tab */}
           {activeTab === "detections" && (
             <div className="h-full w-full">
-              <Mitigations />
+              <Mitigations initialTab={mitigationTab} />
             </div>
           )}
 

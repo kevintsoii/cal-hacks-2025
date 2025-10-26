@@ -214,6 +214,78 @@ async def search_mitigations(query: str, k: int = 10):
         logger.error(f"Error searching mitigations: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error searching mitigations: {str(e)}")
 
+@app.get("/metrics/overview")
+async def get_metrics_overview():
+    """
+    Get overview metrics for the dashboard.
+    Returns total requests, total mitigations, active mitigations, and threat types.
+    """
+    import httpx
+    
+    try:
+        # Get total requests from Elasticsearch
+        total_requests = 0
+        try:
+            result = await elasticsearch_client.client.count(index="api_requests")
+            total_requests = result.get("count", 0)
+        except Exception as e:
+            logger.warning(f"Error counting requests from Elasticsearch: {str(e)}")
+        
+        # Get total mitigations from ChromaDB
+        total_mitigations = 0
+        threat_types = {}
+        try:
+            async with httpx.AsyncClient() as client:
+                chromadb_url = os.getenv("CHROMADB_URL", "http://chromadb:9000")
+                response = await client.get(f"{chromadb_url}/stats")
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    total_mitigations = data.get("total_items", 0)
+                
+                # Get all mitigations to count threat types
+                response = await client.get(f"{chromadb_url}/all")
+                if response.status_code == 200:
+                    data = response.json()
+                    items = data.get("items", [])
+                    
+                    # Count threat types by source_agent
+                    for item in items:
+                        agent = item.get("metadata", {}).get("source_agent", "unknown")
+                        threat_types[agent] = threat_types.get(agent, 0) + 1
+        except Exception as e:
+            logger.warning(f"Error fetching mitigations from ChromaDB: {str(e)}")
+        
+        # Get active mitigations from Redis
+        active_mitigations_count = 0
+        try:
+            cursor = 0
+            while True:
+                cursor, keys = await redis_client.client.scan(cursor, match="mitigation:*", count=100)
+                
+                for key in keys:
+                    value = await redis_client.get_value(key)
+                    if value and value != "none":
+                        active_mitigations_count += 1
+                
+                if cursor == 0:
+                    break
+        except Exception as e:
+            logger.warning(f"Error counting active mitigations from Redis: {str(e)}")
+        
+        return JSONResponse({
+            "success": True,
+            "metrics": {
+                "total_requests": total_requests,
+                "total_mitigations": total_mitigations,
+                "active_mitigations": active_mitigations_count,
+                "threat_types": threat_types
+            }
+        })
+    except Exception as e:
+        logger.error(f"Error fetching metrics overview: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error fetching metrics overview: {str(e)}")
+
 # Include the tests router
 app.include_router(tests_router, tags=["tests"])
 
