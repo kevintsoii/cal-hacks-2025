@@ -6,10 +6,12 @@ import Login from './pages/Login'
 import UserSearch from './pages/UserSearch'
 import { WebSocketProvider } from './hooks/useWebSocket'
 import { ActivityDataProvider } from './hooks/useActivityData'
+import ScrollToTop from './components/ScrollToTop'
 
 function App() {
   return (
     <Router>
+      <ScrollToTop />
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/dashboard" element={

@@ -130,10 +130,10 @@ app.add_middleware(Dyno)`
   ]
 
   return (
-    <div className="min-h-screen bg-gray-950 relative overflow-hidden">
+    <div className="min-h-screen bg-gray-950 relative">
 
       {/* Complex Animated Background */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+      <div className="fixed inset-0 overflow-hidden pointer-events-none">
         {/* Gradient meshes */}
         <div className="absolute inset-0 bg-gradient-to-br from-blue-950 via-gray-950 to-purple-950"></div>
         
@@ -148,7 +148,7 @@ app.add_middleware(Dyno)`
       </div>
 
       {/* Navigation - Dark Glass Effect */}
-      <nav className="bg-gray-900/50 backdrop-blur-xl border-b border-gray-700/50 shadow-lg sticky top-0 z-50">
+      <nav className="bg-gray-900/95 backdrop-blur-xl border-b border-gray-700/50 shadow-lg fixed top-0 left-0 right-0 z-50 w-full">
         <div className="max-w-7xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
@@ -173,7 +173,7 @@ app.add_middleware(Dyno)`
       </nav>
 
       {/* Hero Section - Side by Side */}
-      <section className="max-w-7xl mx-auto px-4 lg:px-2 pt-20 pb-16 relative">
+      <section className="max-w-7xl mx-auto px-4 lg:px-2 pt-24 pb-16 relative">
         <div className="grid lg:grid-cols-2 gap-36 items-center">
           {/* Left: Text Content */}
           <div className="space-y-8 fade-in-scroll">
@@ -439,7 +439,7 @@ app.add_middleware(Dyno)`
       </section>
 
       {/* CTA Section */}
-      <section className="max-w-7xl mx-auto px-6 py-16 relative">
+      <section className="max-w-7xl mx-auto px-6 py-16 pb-8 relative">
         <div className="relative fade-in-scroll">
           {/* Glowing background */}
           <div className="absolute inset-0 bg-gradient-to-r from-blue-600/30 to-cyan-600/30 rounded-3xl blur-3xl"></div>
@@ -480,8 +480,8 @@ app.add_middleware(Dyno)`
       </section>
 
       {/* Footer - Dark Glass Effect */}
-      <footer className="border-t border-gray-800 bg-gray-900/50 backdrop-blur-xl mt-16">
-        <div className="max-w-7xl mx-auto px-6 py-12">
+      <footer className="border-t border-gray-800 bg-gray-900/95 backdrop-blur-xl relative mt-16 z-40">
+        <div className="max-w-7xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
               <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-lg flex items-center justify-center shadow-lg shadow-blue-500/30">

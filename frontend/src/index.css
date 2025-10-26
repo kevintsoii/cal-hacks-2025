@@ -1,5 +1,13 @@
 @import "tailwindcss";
 
+/* Remove white space */
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  overflow-x: hidden;
+}
+
 /* Custom Fonts */
 body {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
