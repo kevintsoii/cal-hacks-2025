@@ -127,9 +127,12 @@ async def handle_mitigation_batch(ctx: Context, sender: str, batch: MitigationBa
         )
         ctx.logger.info(f"[CALIBRATION]   Reason: {mitigation.reason}")
         
-        # STEP 1: Query ChromaDB for similar past mitigations
-        ctx.logger.info(f"\n[CALIBRATION] 🔍 STEP 1: Querying ChromaDB for similar cases...")
-        similar_cases = await query_chromadb(ctx, mitigation.reason, mitigation.entity)
+        # STEP 1: Query ChromaDB for similar past mitigations AND custom rules (in parallel)
+        ctx.logger.info(f"\n[CALIBRATION] 🔍 STEP 1: Querying ChromaDB for similar cases and custom rules...")
+        similar_cases, custom_rules = await asyncio.gather(
+            query_chromadb(ctx, mitigation.reason, mitigation.entity),
+            query_custom_rules(ctx, mitigation.reason)
+        )
         
         if similar_cases:
             ctx.logger.info(f"[CALIBRATION]   ✓ Found {len(similar_cases)} similar past cases")
@@ -138,10 +141,17 @@ async def handle_mitigation_batch(ctx: Context, sender: str, batch: MitigationBa
         else:
             ctx.logger.info(f"[CALIBRATION]   ℹ️  No similar cases found (first-time scenario)")
         
+        if custom_rules:
+            ctx.logger.info(f"[CALIBRATION]   ✓ Found {len(custom_rules)} relevant custom rules")
+            for j, rule in enumerate(custom_rules[:3], 1):
+                ctx.logger.info(f"[CALIBRATION]     {j}. [{rule.get('category', 'general')}] {rule.get('refined_text', '')[:60]}...")
+        else:
+            ctx.logger.info(f"[CALIBRATION]   ℹ️  No custom rules found")
+        
         # STEP 2: Analyze and calibrate
         ctx.logger.info(f"\n[CALIBRATION] ⚖️  STEP 2: Analyzing and calibrating mitigation...")
         calibrated_mitigation, calibration_reasoning = await calibrate_with_rag(
-            ctx, mitigation, similar_cases
+            ctx, mitigation, similar_cases, custom_rules
         )
         
         ctx.logger.info(f"[CALIBRATION]   Decision: {calibration_reasoning['decision']}")
@@ -212,9 +222,32 @@ async def query_chromadb(ctx: Context, reason: str, entity: str) -> List[Dict]:
         return []
 
 
-async def calibrate_with_rag(ctx: Context, mitigation: Mitigation, similar_cases: List[Dict]) -> tuple[Mitigation, Dict]:
+async def query_custom_rules(ctx: Context, reason: str) -> List[Dict]:
     """
-    Use RAG + LLM (Groq) to amplify or downgrade mitigation based on historical patterns.
+    Query ChromaDB for relevant custom security rules using vector similarity search.
+    Uses semantic embeddings to find applicable rules.
+    """
+    try:
+        # Query custom rules collection
+        rules = await rag.query_rules(reason, k=3)
+        
+        if not rules:
+            ctx.logger.info(f"[CALIBRATION]   No custom rules found in ChromaDB")
+            return []
+        
+        ctx.logger.info(f"[CALIBRATION]   Found {len(rules)} relevant custom rules")
+        return rules
+        
+    except Exception as e:
+        ctx.logger.error(f"[CALIBRATION] Error querying custom rules: {e}")
+        import traceback
+        ctx.logger.error(f"[CALIBRATION] Traceback: {traceback.format_exc()}")
+        return []
+
+
+async def calibrate_with_rag(ctx: Context, mitigation: Mitigation, similar_cases: List[Dict], custom_rules: List[Dict]) -> tuple[Mitigation, Dict]:
+    """
+    Use RAG + LLM (Groq) to amplify or downgrade mitigation based on historical patterns and custom rules.
     
     Returns: (calibrated_mitigation, reasoning_dict)
     """
@@ -244,6 +277,25 @@ async def calibrate_with_rag(ctx: Context, mitigation: Mitigation, similar_cases
         
         ctx.logger.info(f"[CALIBRATION]   RAG Context: {total_cases} similar cases retrieved")
     
+    # Prepare custom rules context
+    if not custom_rules:
+        rules_context = "No custom security rules defined."
+        total_rules = 0
+    else:
+        total_rules = len(custom_rules)
+        
+        # Format custom rules for LLM
+        rules_context = f"Retrieved {total_rules} relevant custom security rules:\n"
+        
+        for i, rule in enumerate(custom_rules[:5], 1):
+            rules_context += (
+                f"{i}. [{rule.get('category', 'general')}] (severity:{rule.get('severity', 'medium')}) "
+                f"{rule.get('refined_text', rule.get('original_text', 'N/A'))} | "
+                f"similarity:{rule.get('similarity_score', 0):.2f}\n"
+            )
+        
+        ctx.logger.info(f"[CALIBRATION]   Custom Rules: {total_rules} relevant rules retrieved")
+    
     # Build user prompt with mitigation details and historical context
     user_prompt = f"""CURRENT MITIGATION TO CALIBRATE:
 Entity Type: {mitigation.entity_type}
@@ -256,7 +308,11 @@ Source Agent: {mitigation.source_agent}
 HISTORICAL DATA (RAG):
 {historical_context}
 
-Based on these historical patterns and past decisions for similar threats, decide whether to AMPLIFY, DOWNGRADE, or KEEP_ORIGINAL for this mitigation.
+CUSTOM SECURITY RULES (RAG):
+{rules_context}
+
+Based on these historical patterns, custom security rules, and past decisions for similar threats, decide whether to AMPLIFY, DOWNGRADE, or KEEP_ORIGINAL for this mitigation.
+Consider both the historical incident patterns and any applicable custom rules in your decision.
 Return your decision in the specified JSON format."""
 
     try:
@@ -336,6 +392,7 @@ Return your decision in the specified JSON format."""
             "reasoning": reasoning,
             "confidence": confidence,
             "cases_analyzed": total_cases,
+            "rules_analyzed": total_rules,
             "original_severity": original_severity,
             "calibrated_severity": new_severity,
             "original_mitigation": original_mitigation_type,

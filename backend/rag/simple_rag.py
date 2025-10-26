@@ -89,6 +89,31 @@ class SimpleRAG:
         except Exception:
             return False
     
+    async def query_rules(self, query_text: str, k: int = 5) -> List[Dict[str, Any]]:
+        """
+        Query custom security rules using semantic search.
+        
+        Args:
+            query_text: The query string
+            k: Number of top results to return
+            
+        Returns:
+            List of similar rules with scores
+        """
+        payload = {
+            "query_text": query_text,
+            "k": k
+        }
+        
+        response = await self.client.get(
+            f"{self.chromadb_url}/rules/query",
+            params=payload
+        )
+        response.raise_for_status()
+        
+        result = response.json()
+        return result.get("rules", [])
+    
     async def get_stats(self) -> Dict[str, Any]:
         """Get collection statistics."""
         response = await self.client.get(f"{self.chromadb_url}/stats")
