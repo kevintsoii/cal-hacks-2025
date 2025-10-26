@@ -1,9 +1,9 @@
-import { Activity, Search, LayoutGrid, Shield, Settings, Rocket, MessageSquare } from "lucide-react";
+import { Activity, Search, LayoutGrid, Shield, Settings, Rocket, MessageSquare, Bot } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 interface NavbarProps {
-  readonly activeTab: "overview" | "detections" | "endpoints" | "run-tests" | "chat";
-  readonly setActiveTab: (tab: "overview" | "detections" | "endpoints" | "run-tests" | "chat") => void;
+  readonly activeTab: "overview" | "detections" | "endpoints" | "run-tests" | "chat" | "agent-rules";
+  readonly setActiveTab: (tab: "overview" | "detections" | "endpoints" | "run-tests" | "chat" | "agent-rules") => void;
   readonly onSettingsClick: () => void;
 }
 
@@ -19,6 +19,7 @@ export default function Navbar({
     { id: "detections" as const, label: "Detections", icon: Search },
     { id: "endpoints" as const, label: "Endpoints", icon: LayoutGrid },
     { id: "chat" as const, label: "AI Chat", icon: MessageSquare },
+    { id: "agent-rules" as const, label: "Agent Rules", icon: Bot },
   ];
 
   const testNavItems = [

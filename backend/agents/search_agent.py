@@ -10,6 +10,7 @@ from models import (
     APIRequestLog, RequestBatch, OrchestratorResponse, clean_llm_output, SpecialistRequest,
     Mitigation, MitigationBatch
 )
+from utils.rule_loader import load_agent_rules
 import json
 import httpx  # For making async API calls
 import asyncio
@@ -289,8 +290,12 @@ async def handle_batch(ctx: Context, logs: SpecialistRequest, return_metadata: b
             'Authorization': f'Bearer {GROQ_API_KEY}'
         }
         
+        # Load custom rules and append to system prompt
+        custom_rules = load_agent_rules("search")
+        system_prompt = SEARCH_SPECIALIST_PROMPT + custom_rules
+        
         messages = [
-            {"role": "system", "content": SEARCH_SPECIALIST_PROMPT},
+            {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt}
         ]
         

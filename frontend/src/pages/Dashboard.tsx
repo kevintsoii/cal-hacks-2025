@@ -8,6 +8,7 @@ import EndpointStatus from "@/components/Endpoint-Status";
 import Navbar from "@/components/Navbar";
 import RunTests from "@/components/RunTests";
 import Chat from "./Chat";
+import AgentRules from "./AgentRules";
 import type { RunTestsTestType, RunTestsLogEntry } from "@/components/RunTests";
 
 type MitigationLevel = {
@@ -31,7 +32,7 @@ const allMitigationLevels: MitigationLevel[] = [
 
 export default function Dashboard() {
   const [activeTab, setActiveTab] = useState<
-    "overview" | "detections" | "endpoints" | "run-tests" | "chat"
+    "overview" | "detections" | "endpoints" | "run-tests" | "chat" | "agent-rules"
   >("overview");
   const [showSettings, setShowSettings] = useState(false);
 
@@ -45,6 +46,8 @@ export default function Dashboard() {
         return "Endpoints";
       case "run-tests":
         return "Run Tests";
+      case "agent-rules":
+        return "Agent Rules";
       default:
         return "Overview";
     }
@@ -246,6 +249,13 @@ export default function Dashboard() {
           {activeTab === "chat" && (
             <div className="fixed inset-0 ml-64 mt-[73px]">
               <Chat />
+            </div>
+          )}
+
+          {/* Agent Rules Tab */}
+          {activeTab === "agent-rules" && (
+            <div className="fixed inset-0 ml-64 mt-[73px] overflow-auto">
+              <AgentRules />
             </div>
           )}
         </main>
