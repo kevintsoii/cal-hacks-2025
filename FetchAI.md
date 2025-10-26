@@ -24,3 +24,12 @@ Found in /backend/agents
     - agent1qgnl0fly845g2zlx904lsgwygl4vl7jygcx7xyxf82zu95g26mgmy0dk9rt
     - https://agentverse.ai/agents/details/agent1qgnl0fly845g2zlx904lsgwygl4vl7jygcx7xyxf82zu95g26mgmy0dk9rt/profile
 
+
+
+- Chatbot Agent
+    - agent1qw7m6gyh3swk38gw3zkc86sa2wrjqrcykvpzjeeqrxv8k4fgskzpzac6kk5
+    - https://agentverse.ai/agents/details/agent1qw7m6gyh3swk38gw3zkc86sa2wrjqrcykvpzjeeqrxv8k4fgskzpzac6kk5/profile
+
+- ESQL Query Agent
+    - agent1qwxyzc74yr92wstx0g7q4fmvzezev08495m5jq0yl9pwz05ur5gly5t4kuy
+    - https://agentverse.ai/agents/details/agent1qwxyzc74yr92wstx0g7q4fmvzezev08495m5jq0yl9pwz05ur5gly5t4kuy/profile
