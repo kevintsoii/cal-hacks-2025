@@ -20,6 +20,9 @@ from datetime import datetime
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Suppress verbose Elasticsearch transport logs
+logging.getLogger('elastic_transport.transport').setLevel(logging.WARNING)
+
 app = FastAPI()
 
 app.add_middleware(

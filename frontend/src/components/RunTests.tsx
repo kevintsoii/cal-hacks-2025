@@ -51,6 +51,9 @@ export interface RunTestsLogEntry {
   timestamp: string
   message: string
   type: 'info' | 'warning' | 'error' | 'success'
+  ip?: string
+  url?: string
+  method?: string
 }
 
 interface RunTestsProps {
@@ -184,11 +187,15 @@ export default function RunTests({
             setTotalRequests(message.total)
             
             // Add detailed log for each request
-            const statusMessage = `Request ${message.request_num}/${message.total}: Status ${message.status_code} from IP ${message.ip}`
+            const statusName = getStatusCodeName(message.status_code)
+            const statusMessage = `[Request ${message.request_num}/${message.total}] ${message.status_code} ${statusName}`
             setLogs(prev => [...prev, {
               timestamp: new Date().toLocaleTimeString(),
               message: statusMessage,
-              type: message.status_code === 200 ? 'success' : (message.status_code === 401 ? 'warning' : 'error')
+              type: message.status_code === 200 ? 'success' : (message.status_code === 401 ? 'warning' : 'error'),
+              ip: message.ip,
+              url: message.url,
+              method: message.method
             }])
             break
             
@@ -262,6 +269,24 @@ export default function RunTests({
     }
   }
 
+  const getStatusCodeName = (code: number): string => {
+    const statusCodes: { [key: number]: string } = {
+      200: 'OK',
+      201: 'Created',
+      204: 'No Content',
+      400: 'Bad Request',
+      401: 'Unauthorized',
+      403: 'Forbidden',
+      404: 'Not Found',
+      405: 'Method Not Allowed',
+      429: 'Too Many Requests',
+      500: 'Internal Server Error',
+      502: 'Bad Gateway',
+      503: 'Service Unavailable'
+    }
+    return statusCodes[code] || 'Unknown'
+  }
+
   const getLogColor = (type: RunTestsLogEntry['type']) => {
     switch (type) {
       case 'info':
@@ -272,6 +297,17 @@ export default function RunTests({
         return 'text-red-700 bg-red-50 border-red-200'
       case 'success':
         return 'text-green-700 bg-green-50 border-green-200'
+    }
+  }
+
+  const extractPath = (url: string): string => {
+    try {
+      const urlObj = new URL(url)
+      return urlObj.pathname + urlObj.search + urlObj.hash
+    } catch {
+      // If URL parsing fails, try to extract path manually
+      const match = url.match(/(?:https?:\/\/)?(?:[^\/]+)(\/[^\s]*)/)
+      return match ? match[1] : url
     }
   }
 
@@ -405,10 +441,27 @@ export default function RunTests({
                     key={index}
                     className={`p-3 rounded-lg border text-sm ${getLogColor(log.type)}`}
                   >
-                    <div className="flex items-start justify-between">
-                      <span className="font-mono text-xs opacity-75">{log.timestamp}</span>
-                    </div>
-                    <div className="mt-1 font-medium">{log.message}</div>
+                    {log.ip || log.url ? (
+                      // Full format for logs with IP/URL
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                        <div className="font-mono text-xs opacity-75">{log.timestamp}</div>
+                        {log.ip && (
+                          <div className="font-mono text-xs font-semibold text-right">IP: {log.ip}</div>
+                        )}
+                        <div className="font-medium">{log.message}</div>
+                        {log.url && (
+                          <div className="font-mono text-xs font-semibold text-right">
+                            {log.method && <span>{log.method}</span>} {extractPath(log.url)}
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      // Compact format for simple logs without IP/URL
+                      <div className="flex items-center gap-3">
+                        <div className="font-mono text-xs opacity-75">{log.timestamp}</div>
+                        <div className="font-medium">{log.message}</div>
+                      </div>
+                    )}
                   </div>
                 ))}
                 <div ref={logsEndRef} />

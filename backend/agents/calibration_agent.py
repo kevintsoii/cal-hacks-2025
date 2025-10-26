@@ -48,12 +48,12 @@ http_client = httpx.AsyncClient()
 rag = SimpleRAG()
 
 # CALIBRATION AGENT PROMPT
-CALIBRATION_PROMPT = """You are an AI Calibration Agent responsible for fine-tuning security mitigations based on historical effectiveness data.
+CALIBRATION_PROMPT = """You are an AI Calibration Agent responsible for fine-tuning security mitigations based on historical patterns and reasoning.
 
 Your role:
 1. Review the recommended mitigation from a specialist agent (Auth, Search, or General)
 2. Analyze similar past mitigations from the RAG database (ChromaDB)
-3. Decide whether to AMPLIFY, DOWNGRADE, or KEEP the mitigation based on historical effectiveness
+3. Decide whether to AMPLIFY, DOWNGRADE, or KEEP the mitigation based on patterns in past decisions
 4. Provide clear reasoning for your decision
 
 Available mitigation levels (in order of severity):
@@ -62,23 +62,33 @@ Available mitigation levels (in order of severity):
 - temp_block: Temporary block (15-60 min) - Severity: high
 - ban: Permanent ban - Severity: critical
 
-Decision guidelines:
-- AMPLIFY: If similar past mitigations were ineffective (<50% effectiveness) → increase severity
-- DOWNGRADE: If similar past mitigations were overly effective (>80% effectiveness, all successful) → decrease severity to reduce friction
-- KEEP_ORIGINAL: If historical data shows moderate effectiveness (50-80%) or no data available
+Decision guidelines - TEMPORAL PATTERNS ARE CRITICAL:
+- AMPLIFY: 
+  * Multiple similar incidents clustered in time (within minutes/hours) = REPEAT OFFENDER pattern
+  * 3+ similar cases within a short timeframe = clear escalation needed
+  * Frequency of incidents is increasing over time
+  * Past incidents had higher severity levels
+- DOWNGRADE: 
+  * Only 1-2 isolated incidents in history with large time gaps (hours/days apart)
+  * Sparse pattern suggests one-off mistakes, not malicious intent
+  * Long time gap since last similar incident (suggests reformed behavior)
+  * Past incidents consistently handled with lower severity
+- KEEP_ORIGINAL: 
+  * Similar cases used the same severity level consistently
+  * Mixed temporal patterns (some clustered, some sparse)
+  * No clear pattern exists
 
-Consider:
-- Average effectiveness of similar cases
-- Number of similar cases (higher = more confidence)
-- Severity of the threat
-- User experience vs security trade-offs
+Prioritize temporal clustering:
+- Repeat offenses within similar timestamps (< 5 minutes apart) = HIGH PRIORITY for AMPLIFY
+- Large gaps between incidents (> 5 minutes) with only 1-2 cases = safe to DOWNGRADE
+- Consider recency: recent clusters are more concerning than old isolated incidents
 
 Output format - Return ONLY valid JSON:
 {
   "decision": "AMPLIFY|DOWNGRADE|KEEP_ORIGINAL",
   "calibrated_severity": "low|medium|high|critical",
   "calibrated_mitigation": "delay|captcha|temp_block|ban",
-  "reasoning": "Brief explanation of your decision based on the historical data",
+  "reasoning": "Brief explanation emphasizing temporal patterns and repeat offense analysis",
   "confidence": "low|medium|high"
 }
 """
@@ -86,14 +96,10 @@ Output format - Return ONLY valid JSON:
 
 @agent.on_event("startup")
 async def startup(ctx: Context):
-    ctx.logger.info("[CALIBRATION] Calibration Agent online with AI-powered RAG")
-    ctx.logger.info(f"[CALIBRATION] Using Groq LLM for intelligent mitigation calibration")
     chromadb_url = os.getenv("CHROMADB_URL", "http://localhost:9000")
-    ctx.logger.info(f"[CALIBRATION] Connected to ChromaDB service at: {chromadb_url}")
-    ctx.logger.info(f"[CALIBRATION] Vector embeddings enabled for semantic search")
-    ctx.logger.info(f"[CALIBRATION] Agent address: {agent.address}")
     if not GROQ_API_KEY:
         ctx.logger.warning("[CALIBRATION] ⚠️  GROQ_API_KEY not found - calibration will fail!")
+    ctx.logger.info("[CALIBRATION] Calibration Agent online with pattern-based RAG learning")
 
 
 @agent.on_message(model=MitigationBatch)
@@ -103,8 +109,8 @@ async def handle_mitigation_batch(ctx: Context, sender: str, batch: MitigationBa
     
     Workflow:
     1. Query ChromaDB for similar past mitigations using vector similarity (RAG)
-    2. Analyze effectiveness of similar mitigations using Groq LLM
-    3. Amplify or downgrade the mitigation based on historical data
+    2. Analyze patterns in similar mitigations using Groq LLM
+    3. Amplify or downgrade the mitigation based on historical patterns
     4. Save the calibrated mitigation to ChromaDB with vector embeddings
     5. Apply the final mitigation to Redis
     """
@@ -128,7 +134,7 @@ async def handle_mitigation_batch(ctx: Context, sender: str, batch: MitigationBa
         if similar_cases:
             ctx.logger.info(f"[CALIBRATION]   ✓ Found {len(similar_cases)} similar past cases")
             for j, case in enumerate(similar_cases[:3], 1):
-                ctx.logger.info(f"[CALIBRATION]     {j}. {case['mitigation']} → Result: {case['result']} (Effectiveness: {case['effectiveness']}%)")
+                ctx.logger.info(f"[CALIBRATION]     {j}. {case['mitigation']} (severity: {case['severity']}) - {case['reason'][:60]}...")
         else:
             ctx.logger.info(f"[CALIBRATION]   ℹ️  No similar cases found (first-time scenario)")
         
@@ -169,8 +175,8 @@ async def query_chromadb(ctx: Context, reason: str, entity: str) -> List[Dict]:
     Uses semantic embeddings to find similar threat patterns.
     """
     try:
-        # Build semantic query combining reason and entity context
-        query_text = f"{reason} affecting {entity}"
+        # Use threat reason directly for semantic matching (entity is noise for pattern matching)
+        query_text = reason
         
         # Use RAG to find semantically similar past incidents
         similar_items = await rag.query_items(query_text, k=5)
@@ -191,8 +197,7 @@ async def query_chromadb(ctx: Context, reason: str, entity: str) -> List[Dict]:
                 "mitigation": metadata.get("mitigation"),
                 "reason": item.get("text"),  # The reasoning text (embedded)
                 "source_agent": metadata.get("source_agent"),
-                "effectiveness": metadata.get("effectiveness"),
-                "result": metadata.get("result", "pending"),
+                "calibration_decision": metadata.get("calibration_decision"),
                 "similarity_score": item.get("score", 0.0),
                 "timestamp": metadata.get("timestamp")
             })
@@ -209,39 +214,35 @@ async def query_chromadb(ctx: Context, reason: str, entity: str) -> List[Dict]:
 
 async def calibrate_with_rag(ctx: Context, mitigation: Mitigation, similar_cases: List[Dict]) -> tuple[Mitigation, Dict]:
     """
-    Use RAG + LLM (Groq) to amplify or downgrade mitigation based on historical effectiveness.
+    Use RAG + LLM (Groq) to amplify or downgrade mitigation based on historical patterns.
     
     Returns: (calibrated_mitigation, reasoning_dict)
     """
     original_severity = mitigation.severity
     original_mitigation_type = mitigation.mitigation
     
-    # Filter out cases with None effectiveness (pending results)
-    cases_with_results = [case for case in similar_cases if case.get("effectiveness") is not None]
-    
-    # Prepare context for LLM
-    if not cases_with_results:
+    # Prepare context for LLM based on top similar cases
+    if not similar_cases:
         historical_context = "No historical data available for similar cases."
-        avg_effectiveness = None
         total_cases = 0
     else:
-        total_cases = len(cases_with_results)
-        avg_effectiveness = sum(case.get("effectiveness", 0) for case in cases_with_results) / total_cases
-        effective_count = sum(1 for case in cases_with_results if case.get("effectiveness", 0) >= 70)
+        total_cases = len(similar_cases)
         
-        # Format historical cases for LLM
-        historical_context = f"Historical Analysis of {total_cases} similar cases:\n"
-        historical_context += f"- Average effectiveness: {avg_effectiveness:.1f}%\n"
-        historical_context += f"- Highly effective (≥70%): {effective_count}/{total_cases}\n\n"
-        historical_context += "Past mitigation details:\n"
         
-        for i, case in enumerate(cases_with_results[:5], 1):
-            historical_context += f"{i}. Mitigation: {case.get('mitigation', 'unknown')} (Severity: {case.get('severity', 'unknown')})\n"
-            historical_context += f"   Result: {case.get('result', 'unknown')}\n"
-            historical_context += f"   Effectiveness: {case.get('effectiveness', 0)}%\n"
-            historical_context += f"   Reason: {case.get('reason', 'N/A')[:100]}\n\n"
+        # Format historical cases for LLM - one line per case
+        historical_context = f"Retrieved {total_cases} similar past mitigations (analyze timestamps for recency/clustering):\n"
         
-        ctx.logger.info(f"[CALIBRATION]   RAG Context: {total_cases} cases, avg {avg_effectiveness:.1f}% effectiveness")
+        for i, case in enumerate(similar_cases[:5], 1):
+            historical_context += (
+                f"{i}. [{case.get('timestamp', 'unknown')}] "
+                f"{case.get('entity_type', '?')}:{case.get('entity', '?')} → "
+                f"{case.get('mitigation', '?')} (severity:{case.get('severity', '?')}) | "
+                f"{case.get('source_agent', '?')} | "
+                f"reason: {case.get('reason', 'N/A')[:100]} | "
+                f"similarity:{case.get('similarity_score', 0):.2f}\n"
+            )
+        
+        ctx.logger.info(f"[CALIBRATION]   RAG Context: {total_cases} similar cases retrieved")
     
     # Build user prompt with mitigation details and historical context
     user_prompt = f"""CURRENT MITIGATION TO CALIBRATE:
@@ -255,7 +256,7 @@ Source Agent: {mitigation.source_agent}
 HISTORICAL DATA (RAG):
 {historical_context}
 
-Based on this historical effectiveness data, decide whether to AMPLIFY, DOWNGRADE, or KEEP_ORIGINAL for this mitigation.
+Based on these historical patterns and past decisions for similar threats, decide whether to AMPLIFY, DOWNGRADE, or KEEP_ORIGINAL for this mitigation.
 Return your decision in the specified JSON format."""
 
     try:
@@ -335,7 +336,6 @@ Return your decision in the specified JSON format."""
             "reasoning": reasoning,
             "confidence": confidence,
             "cases_analyzed": total_cases,
-            "avg_effectiveness": round(avg_effectiveness, 1) if avg_effectiveness else None,
             "original_severity": original_severity,
             "calibrated_severity": new_severity,
             "original_mitigation": original_mitigation_type,
@@ -395,12 +395,8 @@ Confidence: {calibration_reasoning["confidence"]}
             "source_agent": mitigation.source_agent,
             "calibration_decision": calibration_reasoning["decision"],
             "calibration_confidence": calibration_reasoning["confidence"],
-            "result": "pending",  # Will be "resolved", "escalated", "false_positive", etc.
             "timestamp": datetime.now(timezone.utc).isoformat()
         }
-        # Don't include effectiveness if None - will be added later when we have feedback
-        if calibration_reasoning.get("effectiveness") is not None:
-            metadata["effectiveness"] = calibration_reasoning["effectiveness"]
         
         # Save to ChromaDB with vector embeddings
         # The reasoning_text gets embedded for semantic search
@@ -426,36 +422,36 @@ async def apply_to_redis(ctx: Context, mitigation: Mitigation):
     Apply the final mitigation to Redis so middleware can enforce it.
     
     Redis keys:
-    - mitigation:ip:{ip_address} -> severity level (1-4)
-    - mitigation:user:{username} -> severity level (1-4)
+    - mitigation:ip:{ip_address} -> mitigation type ("delay", "captcha", "temp_block", "ban")
+    - mitigation:user:{username} -> mitigation type ("delay", "captcha", "temp_block", "ban")
     """
     try:
         from db.redis import redis_client
         
-        # Map severity to numeric level
-        severity_map = {"low": 1, "medium": 2, "high": 3, "critical": 4}
-        severity_level = severity_map.get(mitigation.severity, 2)
+        # Use the mitigation type directly (middleware expects: "delay", "captcha", "temp_block", "ban")
+        mitigation_type = mitigation.mitigation
         
         # Apply to Redis based on entity type
         if mitigation.entity_type == "ip":
             key = f"mitigation:ip:{mitigation.entity}"
-            await redis_client.set_value(key, str(severity_level), expiry=3600)  # 1 hour TTL
-            ctx.logger.info(f"[CALIBRATION]   Set Redis: {key} = {severity_level} (TTL: 1h)")
+            await redis_client.set_value(key, mitigation_type, expiry=60)  # 1 minute TTL (demo)
+            ctx.logger.info(f"[CALIBRATION]   Set Redis: {key} = {mitigation_type} (severity: {mitigation.severity}, TTL: 1min)")
             
         elif mitigation.entity_type == "user":
             key = f"mitigation:user:{mitigation.entity}"
-            await redis_client.set_value(key, str(severity_level), expiry=3600)  # 1 hour TTL
-            ctx.logger.info(f"[CALIBRATION]   Set Redis: {key} = {severity_level} (TTL: 1h)")
+            await redis_client.set_value(key, mitigation_type, expiry=60)  # 1 minute TTL (demo)
+            ctx.logger.info(f"[CALIBRATION]   Set Redis: {key} = {mitigation_type} (severity: {mitigation.severity}, TTL: 1min)")
         
         # Also store mitigation details for debugging
         details_key = f"{key}:details"
         details = {
             "mitigation": mitigation.mitigation,
+            "severity": mitigation.severity,
             "reason": mitigation.reason,
             "timestamp": datetime.now().isoformat(),
             "source_agent": mitigation.source_agent
         }
-        await redis_client.set_value(details_key, json.dumps(details), expiry=3600)
+        await redis_client.set_value(details_key, json.dumps(details), expiry=60)
         
     except Exception as e:
         ctx.logger.error(f"[CALIBRATION] Error applying to Redis: {e}")

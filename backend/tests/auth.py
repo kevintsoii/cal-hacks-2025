@@ -65,8 +65,10 @@ async def run_credential_stuffing_test(websocket: WebSocket, cancellation_event:
     # Generate 100 different credential pairs
     usernames = [f"user{i}" for i in range(100)]
     
+    # Use the SAME IP for all credential stuffing attempts (realistic attack pattern)
+    fake_ip = generate_random_ip()
+    
     for username in usernames:
-        fake_ip = generate_random_ip()
         request = RequestConfig(
             url="http://localhost:8000/login",
             method="POST",
