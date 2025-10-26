@@ -14,18 +14,18 @@ This is a standalone Python service running in its own Docker container with its
 
 ## ChromaDB Commands
 ### 1. Check stats (how many items stored)
-curl http://localhost:8006/stats
+curl http://localhost:9000/stats
 
 ### 2. View all stored mitigations
-curl http://localhost:8006/all | jq
+curl http://localhost:9000/all | jq
 
 ### 3. Search for similar threats (semantic search)
-curl -X POST http://localhost:8006/query \
+curl -X POST http://localhost:9000/query \
   -H "Content-Type: application/json" \
   -d '{"query_text": "brute force login", "k": 5}' | jq
 
 ### 4. Clear all data (if needed)
-curl -X DELETE http://localhost:8006/clear
+curl -X DELETE http://localhost:9000/clear
 
 ## API Endpoints
 
@@ -72,7 +72,7 @@ pip install -r requirements.txt
 python main.py
 ```
 
-Service runs on http://localhost:8006
+Service runs on http://localhost:9000
 
 ## Docker
 

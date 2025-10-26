@@ -15,7 +15,7 @@ COPY main.py .
 RUN mkdir -p /chroma_data
 
 # Expose port
-EXPOSE 8006
+EXPOSE 9000
 
 # Run the FastAPI server
 CMD ["python", "main.py"]

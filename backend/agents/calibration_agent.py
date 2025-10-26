@@ -87,7 +87,7 @@ Output format - Return ONLY valid JSON:
 async def startup(ctx: Context):
     ctx.logger.info("[CALIBRATION] Calibration Agent online with AI-powered RAG")
     ctx.logger.info(f"[CALIBRATION] Using Groq LLM for intelligent mitigation calibration")
-    chromadb_url = os.getenv("CHROMADB_URL", "http://localhost:8006")
+    chromadb_url = os.getenv("CHROMADB_URL", "http://localhost:9000")
     ctx.logger.info(f"[CALIBRATION] Connected to ChromaDB service at: {chromadb_url}")
     ctx.logger.info(f"[CALIBRATION] Vector embeddings enabled for semantic search")
     ctx.logger.info(f"[CALIBRATION] Agent address: {agent.address}")

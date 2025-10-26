@@ -15,7 +15,7 @@ from datetime import datetime
 class SimpleRAG:
     def __init__(self, chromadb_url: str = None):
         """Initialize the simple RAG system - connects to ChromaDB service."""
-        self.chromadb_url = chromadb_url or os.getenv("CHROMADB_URL", "http://localhost:8006")
+        self.chromadb_url = chromadb_url or os.getenv("CHROMADB_URL", "http://localhost:9000")
         self.client = httpx.AsyncClient(timeout=30.0)
     
     async def add_item(self, reasoning: str, user: str, ip: str, severity: int, metadata: Dict[str, Any] = None) -> str:

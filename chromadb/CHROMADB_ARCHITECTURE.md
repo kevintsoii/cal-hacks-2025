@@ -87,7 +87,7 @@ cal-hacks-2025/
 
 ### Backend
 ```bash
-CHROMADB_URL=http://chromadb:8006  # Set in docker-compose.yml
+CHROMADB_URL=http://chromadb:9000  # Set in docker-compose.yml
 ```
 
 ### ChromaDB Service
@@ -96,7 +96,7 @@ No special env vars needed - stores data in `/chroma_data` volume
 ## Ports
 
 - **Backend**: 8000-8005
-- **ChromaDB**: 8006
+- **ChromaDB**: 9000
 - **Redis**: 6379
 - **Frontend**: 5173
 
@@ -106,7 +106,7 @@ No special env vars needed - stores data in `/chroma_data` volume
 # Build and start all services
 docker compose up --build
 
-# ChromaDB will start on port 8006
+# ChromaDB will start on port 9000
 # Backend will connect via CHROMADB_URL environment variable
 ```
 
@@ -114,10 +114,10 @@ docker compose up --build
 
 ```bash
 # Health check
-curl http://localhost:8006/
+curl http://localhost:9000/
 
 # Add an item
-curl -X POST http://localhost:8006/add \
+curl -X POST http://localhost:9000/add \
   -H "Content-Type: application/json" \
   -d '{
     "reasoning": "Brute force login attempt detected",
@@ -128,7 +128,7 @@ curl -X POST http://localhost:8006/add \
   }'
 
 # Query similar items
-curl -X POST http://localhost:8006/query \
+curl -X POST http://localhost:9000/query \
   -H "Content-Type: application/json" \
   -d '{
     "query_text": "login attack",
@@ -136,7 +136,7 @@ curl -X POST http://localhost:8006/query \
   }'
 
 # Get stats
-curl http://localhost:8006/stats
+curl http://localhost:9000/stats
 ```
 
 ## Data Persistence
