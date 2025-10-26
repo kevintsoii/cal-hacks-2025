@@ -22,7 +22,11 @@ const formatNumber = (num: number): string => {
   return num.toLocaleString();
 };
 
-export default function MetricsOverview() {
+interface MetricsOverviewProps {
+  onNavigateToDetections?: (tab: 'active' | 'history') => void;
+}
+
+export default function MetricsOverview({ onNavigateToDetections }: MetricsOverviewProps) {
   const [metrics, setMetrics] = useState<MetricsData>({
     total_requests: 0,
     total_mitigations: 0,
@@ -51,12 +55,36 @@ export default function MetricsOverview() {
     return () => clearInterval(interval);
   }, []);
 
+  const handleTotalRequestsClick = () => {
+    // Scroll to Detection Log section
+    const detectionLogElement = document.querySelector('[data-section="detection-log"]');
+    if (detectionLogElement) {
+      detectionLogElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  };
+
+  const handleTotalMitigationsClick = () => {
+    if (onNavigateToDetections) {
+      onNavigateToDetections('history');
+    }
+  };
+
+  const handleActiveMitigationsClick = () => {
+    if (onNavigateToDetections) {
+      onNavigateToDetections('active');
+    }
+  };
+
   return (
     <div className="space-y-8">
       {/* Hero Metrics Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Total Requests - Large Featured Card */}
-        <Card className="relative overflow-hidden bg-gradient-to-br from-blue-500 via-blue-600 to-cyan-600 border-0 shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 animate-fade-in-up" style={{ animationDelay: '0ms' }}>
+        <Card 
+          className="relative overflow-hidden bg-gradient-to-br from-blue-500 via-blue-600 to-cyan-600 border-0 shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 animate-fade-in-up cursor-pointer" 
+          style={{ animationDelay: '0ms' }}
+          onClick={handleTotalRequestsClick}
+        >
           <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-16 -mt-16"></div>
           <div className="absolute bottom-0 left-0 w-24 h-24 bg-white/10 rounded-full -ml-12 -mb-12"></div>
           
@@ -88,7 +116,11 @@ export default function MetricsOverview() {
         </Card>
 
         {/* Total Mitigations - Large Featured Card */}
-        <Card className="relative overflow-hidden bg-gradient-to-br from-orange-500 via-orange-600 to-red-600 border-0 shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 animate-fade-in-up" style={{ animationDelay: '100ms' }}>
+        <Card 
+          className="relative overflow-hidden bg-gradient-to-br from-orange-500 via-orange-600 to-red-600 border-0 shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 animate-fade-in-up cursor-pointer" 
+          style={{ animationDelay: '100ms' }}
+          onClick={handleTotalMitigationsClick}
+        >
           <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-16 -mt-16"></div>
           <div className="absolute bottom-0 left-0 w-24 h-24 bg-white/10 rounded-full -ml-12 -mb-12"></div>
           
@@ -120,7 +152,11 @@ export default function MetricsOverview() {
         </Card>
 
         {/* Active Mitigations - Large Featured Card */}
-        <Card className="relative overflow-hidden bg-gradient-to-br from-red-600 via-pink-600 to-rose-700 border-0 shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 animate-fade-in-up" style={{ animationDelay: '200ms' }}>
+        <Card 
+          className="relative overflow-hidden bg-gradient-to-br from-red-600 via-pink-600 to-rose-700 border-0 shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 animate-fade-in-up cursor-pointer" 
+          style={{ animationDelay: '200ms' }}
+          onClick={handleActiveMitigationsClick}
+        >
           <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-16 -mt-16"></div>
           <div className="absolute bottom-0 left-0 w-24 h-24 bg-white/10 rounded-full -ml-12 -mb-12"></div>
           

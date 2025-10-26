@@ -91,12 +91,16 @@ const CountdownTimer = ({ initialTTL }: { initialTTL: number | null }) => {
   return <span>{display}</span>;
 };
 
-export default function Mitigations() {
+interface MitigationsProps {
+  initialTab?: 'active' | 'history';
+}
+
+export default function Mitigations({ initialTab = 'active' }: MitigationsProps) {
   const [activeMitigations, setActiveMitigations] = useState<ActiveMitigation[]>([]);
   const [pastMitigations, setPastMitigations] = useState<PastMitigation[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedMitigation, setSelectedMitigation] = useState<PastMitigation | null>(null);
-  const [activeTab, setActiveTab] = useState<"active" | "history">("active");
+  const [activeTab, setActiveTab] = useState<"active" | "history">(initialTab);
   const [loading, setLoading] = useState(true);
   const [filterType, setFilterType] = useState<string>("all");
   const [filterMitigation, setFilterMitigation] = useState<string>("all");
@@ -157,6 +161,11 @@ export default function Mitigations() {
     const interval = setInterval(fetchActiveMitigations, 5000);
     return () => clearInterval(interval);
   }, []);
+
+  // Update activeTab when initialTab prop changes
+  useEffect(() => {
+    setActiveTab(initialTab);
+  }, [initialTab]);
 
   useEffect(() => {
     const delaySearch = setTimeout(() => {
