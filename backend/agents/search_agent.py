@@ -158,24 +158,26 @@ async def fetch_from_elasticsearch(ctx: Context, query_string: str) -> Dict:
         ip_pattern = r'\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b'
         ips = re.findall(ip_pattern, query_string)
         if ips:
-            es_query["bool"]["must"].append({"terms": {"client_ip": ips}})
-            ctx.logger.info(f"[SEARCH]   Filtering by IPs: {ips}")
+            # Use .keyword for exact string matching in Elasticsearch
+            es_query["bool"]["must"].append({"terms": {"client_ip.keyword": ips}})
+            ctx.logger.info(f"[SEARCH]   🔍 Filtering by IPs: {ips}")
         
         # Extract username if present
         if "user" in query_lower or "username" in query_lower:
             user_match = re.search(r'user(?:name)?\s+["\']?(\w+)["\']?', query_lower)
             if user_match:
                 username = user_match.group(1)
-                es_query["bool"]["must"].append({"term": {"user": username}})
-                ctx.logger.info(f"[SEARCH]   Filtering by user: {username}")
+                # Use .keyword for exact string matching
+                es_query["bool"]["must"].append({"term": {"user.keyword": username}})
+                ctx.logger.info(f"[SEARCH]   🔍 Filtering by user: {username}")
         
-        # Filter for search/query endpoints only
+        # Filter for search/query endpoints - use wildcard for flexible matching
         search_paths = ["/search", "/query", "/api/products", "/api/users", "/api/items", "/find", "/lookup"]
         es_query["bool"]["should"] = [
-            {"prefix": {"path": path}} for path in search_paths
+            {"wildcard": {"path.keyword": f"*{path}*"}} for path in search_paths
         ]
         es_query["bool"]["minimum_should_match"] = 1
-        ctx.logger.info(f"[SEARCH]   Filtering for search endpoints: {search_paths}")
+        ctx.logger.info(f"[SEARCH]   🔍 Filtering for search endpoints: {search_paths}")
         
         # Extract time range (default 1 hour for search - longer than auth)
         time_value = 1
@@ -200,10 +202,14 @@ async def fetch_from_elasticsearch(ctx: Context, query_string: str) -> Dict:
             }
         }
         es_query["bool"]["filter"].append(time_filter)
-        ctx.logger.info(f"[SEARCH]   Time range: last {time_value}{time_unit}")
+        
+        # Debug logging - show the actual query
+        ctx.logger.info(f"[SEARCH] 🔍 Executing Elasticsearch query:")
+        ctx.logger.info(f"[SEARCH]    Index: api_requests")
+        ctx.logger.info(f"[SEARCH]    Time range: last {time_value}{time_unit}")
+        ctx.logger.info(f"[SEARCH]    Query: {json.dumps(es_query, indent=2)}")
         
         # Execute search
-        ctx.logger.info(f"[SEARCH]   Querying index: api_requests")
         results = await elasticsearch_client.search(
             index_name="api_requests",
             query=es_query,

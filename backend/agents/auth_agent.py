@@ -142,19 +142,23 @@ async def fetch_from_elasticsearch(ctx: Context, query_string: str) -> Dict:
         ip_pattern = r'\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b'
         ips = re.findall(ip_pattern, query_string)
         if ips:
-            es_query["bool"]["must"].append({"terms": {"client_ip": ips}})
+            # Use .keyword for exact string matching in Elasticsearch
+            es_query["bool"]["must"].append({"terms": {"client_ip.keyword": ips}})
+            ctx.logger.info(f"[AUTH]   🔍 Filtering by IPs: {ips}")
         
         # Extract username if present
         if "user" in query_lower or "username" in query_lower:
             user_match = re.search(r'user(?:name)?\s+["\']?(\w+)["\']?', query_lower)
             if user_match:
                 username = user_match.group(1)
-                es_query["bool"]["must"].append({"term": {"user": username}})
+                # Use .keyword for exact string matching
+                es_query["bool"]["must"].append({"term": {"user.keyword": username}})
+                ctx.logger.info(f"[AUTH]   🔍 Filtering by user: {username}")
         
-        # Filter for auth endpoints only
+        # Filter for auth endpoints - use wildcard for flexible matching
         auth_paths = ["/login", "/register", "/auth", "/signup", "/password"]
         es_query["bool"]["should"] = [
-            {"prefix": {"path": path}} for path in auth_paths
+            {"wildcard": {"path.keyword": f"*{path}*"}} for path in auth_paths
         ]
         es_query["bool"]["minimum_should_match"] = 1
         
@@ -185,6 +189,12 @@ async def fetch_from_elasticsearch(ctx: Context, query_string: str) -> Dict:
             }
         }
         es_query["bool"]["filter"].append(time_filter)
+        
+        # Debug logging - show the actual query
+        ctx.logger.info(f"[AUTH] 🔍 Executing Elasticsearch query:")
+        ctx.logger.info(f"[AUTH]    Index: api_requests")
+        ctx.logger.info(f"[AUTH]    Time range: last {time_value}{time_unit}")
+        ctx.logger.info(f"[AUTH]    Query: {json.dumps(es_query, indent=2)}")
         
         # Execute search
         results = await elasticsearch_client.search(
@@ -286,6 +296,7 @@ async def handle_batch(ctx: Context, logs: SpecialistRequest, return_metadata: b
         
         # Check if LLM wants to use the ES tool
         if assistant_message.get('tool_calls'):
+            ctx.logger.info(f"[AUTH] 🔍 LLM decided to query Elasticsearch")
             
             tool_call = assistant_message['tool_calls'][0]
             function_name = tool_call['function']['name']
@@ -294,10 +305,12 @@ async def handle_batch(ctx: Context, logs: SpecialistRequest, return_metadata: b
             if function_name == "fetch_from_elasticsearch":
                 query_string = function_args.get('query_string', '')
                 es_query_used = query_string
+                ctx.logger.info(f"[AUTH] 📋 ES Query String: '{query_string}'")
                 
                 # Execute the tool
                 es_result = await fetch_from_elasticsearch(ctx, query_string)
                 additional_logs_from_es = es_result.get('logs', [])
+                ctx.logger.info(f"[AUTH] ✓ Retrieved {len(additional_logs_from_es)} additional logs from Elasticsearch")
                 
                 # Add the tool response to messages and make a second call
                 messages.append(assistant_message)
@@ -336,6 +349,9 @@ async def handle_batch(ctx: Context, logs: SpecialistRequest, return_metadata: b
                     return []
                 
                 result = response.json()
+        else:
+            ctx.logger.warning(f"[AUTH] ⚠️  LLM chose NOT to query Elasticsearch (tool_choice=auto)")
+            ctx.logger.info(f"[AUTH] 💡 Analyzing only the {len(original_logs)} logs in current batch")
         
         llm_output_str = result['choices'][0]['message']['content']
         

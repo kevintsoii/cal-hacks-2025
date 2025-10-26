@@ -155,25 +155,26 @@ async def fetch_from_elasticsearch(ctx: Context, query_string: str) -> Dict:
         ip_pattern = r'\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b'
         ips = re.findall(ip_pattern, query_string)
         if ips:
-            # Use 'client_ip' field as defined in middleware.py
-            es_query["bool"]["must"].append({"terms": {"client_ip": ips}})
-            ctx.logger.info(f"[GENERAL]   Filtering by IPs: {ips}")
+            # Use .keyword for exact string matching in Elasticsearch
+            es_query["bool"]["must"].append({"terms": {"client_ip.keyword": ips}})
+            ctx.logger.info(f"[GENERAL]   🔍 Filtering by IPs: {ips}")
         
         # Extract username if present (uses 'user' field from middleware)
         if "user" in query_lower or "username" in query_lower:
             user_match = re.search(r'user(?:name)?\s+["\']?(\w+)["\']?', query_lower)
             if user_match:
                 username = user_match.group(1)
-                es_query["bool"]["must"].append({"term": {"user": username}})
-                ctx.logger.info(f"[GENERAL]   Filtering by user: {username}")
+                # Use .keyword for exact string matching
+                es_query["bool"]["must"].append({"term": {"user.keyword": username}})
+                ctx.logger.info(f"[GENERAL]   🔍 Filtering by user: {username}")
         
-        # Extract endpoint/path if mentioned
+        # Extract endpoint/path if mentioned - use wildcard for flexible matching
         if "endpoint" in query_lower or "path" in query_lower:
             path_match = re.search(r'(?:endpoint|path)\s+["\']?(/[\w/\-]+)["\']?', query_lower)
             if path_match:
                 path = path_match.group(1)
-                es_query["bool"]["must"].append({"prefix": {"path": path}})
-                ctx.logger.info(f"[GENERAL]   Filtering by path: {path}")
+                es_query["bool"]["must"].append({"wildcard": {"path.keyword": f"*{path}*"}})
+                ctx.logger.info(f"[GENERAL]   🔍 Filtering by path: {path}")
         
         # Extract time range (default to last 10 minutes)
         time_value = 10
@@ -198,16 +199,20 @@ async def fetch_from_elasticsearch(ctx: Context, query_string: str) -> Dict:
             }
         }
         es_query["bool"]["filter"].append(time_filter)
-        ctx.logger.info(f"[GENERAL]   Time range: last {time_value}{time_unit}")
         
         # Add filter to exclude health check endpoints (noise reduction)
         es_query["bool"]["must_not"] = [
-            {"term": {"path": "/status"}},
-            {"term": {"path": "/health"}}
+            {"term": {"path.keyword": "/status"}},
+            {"term": {"path.keyword": "/health"}}
         ]
         
-        # Execute search - Index name is 'api_requests' as defined in middleware.py line 24
-        ctx.logger.info(f"[GENERAL]   Querying index: api_requests")
+        # Debug logging - show the actual query
+        ctx.logger.info(f"[GENERAL] 🔍 Executing Elasticsearch query:")
+        ctx.logger.info(f"[GENERAL]    Index: api_requests")
+        ctx.logger.info(f"[GENERAL]    Time range: last {time_value}{time_unit}")
+        ctx.logger.info(f"[GENERAL]    Query: {json.dumps(es_query, indent=2)}")
+        
+        # Execute search
         results = await elasticsearch_client.search(
             index_name="api_requests",
             query=es_query,
