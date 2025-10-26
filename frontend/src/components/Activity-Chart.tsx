@@ -2,258 +2,262 @@
 
 import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useActivityData } from "@/hooks/useActivityData";
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
-// Sample data for the chart (last 24 hours)
-const chartData = {
-  labels: ["00:00", "04:00", "08:00", "12:00", "16:00", "20:00", "23:59"],
-  datasets: [
-    {
-      label: "Requests",
-      data: [1200, 1900, 3000, 5000, 4200, 3800, 2400],
-      color: "rgb(59, 130, 246)", // blue
-    },
-    {
-      label: "Threats",
-      data: [20, 45, 80, 120, 90, 75, 50],
-      color: "rgb(239, 68, 68)", // red
-    },
-  ],
-};
-
-interface LineChartProps {
-  readonly data: typeof chartData;
-}
-
-interface TooltipData {
-  x: number;
-  y: number;
-  value: number;
-  label: string;
-  time: string;
-  color: string;
-}
-
-function LineChart({ data }: Readonly<LineChartProps>) {
-  const [tooltip, setTooltip] = useState<TooltipData | null>(null);
-  const width = 1000;
-  const height = 300;
-  const padding = { top: 20, right: 20, bottom: 40, left: 50 };
-  const chartWidth = width - padding.left - padding.right;
-  const chartHeight = height - padding.top - padding.bottom;
-
-  // Find max value for scaling
-  const allValues = data.datasets.flatMap((d) => d.data);
-  const maxValue = Math.max(...allValues);
-  const minValue = 0;
-
-  // Create points for each dataset
-  const createPath = (dataPoints: number[]) => {
-    return dataPoints
-      .map((value, index) => {
-        const x = padding.left + (index / (dataPoints.length - 1)) * chartWidth;
-        const y =
-          padding.top +
-          chartHeight -
-          ((value - minValue) / (maxValue - minValue)) * chartHeight;
-        return `${index === 0 ? "M" : "L"} ${x},${y}`;
-      })
-      .join(" ");
-  };
-
-  return (
-    <div className="w-full relative">
-      <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-auto">
-        {/* Grid lines */}
-        {[0, 0.25, 0.5, 0.75, 1].map((percent) => {
-          const y = padding.top + chartHeight * (1 - percent);
-          return (
-            <g key={percent}>
-              <line
-                x1={padding.left}
-                y1={y}
-                x2={width - padding.right}
-                y2={y}
-                stroke="#e5e7eb"
-                strokeWidth="1"
-              />
-              <text
-                x={padding.left - 10}
-                y={y + 5}
-                textAnchor="end"
-                fontSize="12"
-                fill="#6b7280"
-              >
-                {Math.round(maxValue * percent)}
-              </text>
-            </g>
-          );
-        })}
-
-        {/* X-axis labels */}
-        {data.labels.map((label, index) => {
-          const x =
-            padding.left + (index / (data.labels.length - 1)) * chartWidth;
-          return (
-            <text
-              key={label}
-              x={x}
-              y={height - padding.bottom + 25}
-              textAnchor="middle"
-              fontSize="12"
-              fill="#6b7280"
-            >
-              {label}
-            </text>
-          );
-        })}
-
-        {/* Lines */}
-        {data.datasets.map((dataset) => {
-          const path = createPath(dataset.data);
-          const areaPath = `${path} L ${padding.left + chartWidth},${
-            padding.top + chartHeight
-          } L ${padding.left},${padding.top + chartHeight} Z`;
-
-          return (
-            <g key={dataset.label}>
-              {/* Area fill */}
-              <path d={areaPath} fill={dataset.color} opacity="0.1" />
-              {/* Line */}
-              <path
-                d={path}
-                stroke={dataset.color}
-                strokeWidth="3"
-                fill="none"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-              {/* Points */}
-              {dataset.data.map((value, index) => {
-                const x =
-                  padding.left +
-                  (index / (dataset.data.length - 1)) * chartWidth;
-                const y =
-                  padding.top +
-                  chartHeight -
-                  ((value - minValue) / (maxValue - minValue)) * chartHeight;
-                return (
-                  <g key={`${dataset.label}-${data.labels[index]}`}>
-                    {/* Invisible larger circle for easier hover */}
-                    <circle
-                      cx={x}
-                      cy={y}
-                      r="12"
-                      fill="transparent"
-                      style={{ cursor: "pointer" }}
-                      onMouseEnter={() =>
-                        setTooltip({
-                          x,
-                          y,
-                          value,
-                          label: dataset.label,
-                          time: data.labels[index],
-                          color: dataset.color,
-                        })
-                      }
-                      onMouseLeave={() => setTooltip(null)}
-                    />
-                    {/* Visible circle */}
-                    <circle
-                      cx={x}
-                      cy={y}
-                      r="4"
-                      fill="white"
-                      stroke={dataset.color}
-                      strokeWidth="2"
-                      style={{ pointerEvents: "none" }}
-                    />
-                  </g>
-                );
-              })}
-            </g>
-          );
-        })}
-
-        {/* Tooltip */}
-        {tooltip && (
-          <g>
-            {/* Tooltip background */}
-            <rect
-              x={tooltip.x - 50}
-              y={tooltip.y - 60}
-              width="100"
-              height="50"
-              rx="6"
-              fill="rgba(0, 0, 0, 0.9)"
-              stroke={tooltip.color}
-              strokeWidth="2"
-            />
-            {/* Tooltip text - label */}
-            <text
-              x={tooltip.x}
-              y={tooltip.y - 40}
-              textAnchor="middle"
-              fontSize="12"
-              fill="white"
-              fontWeight="bold"
-            >
-              {tooltip.label}
-            </text>
-            {/* Tooltip text - value */}
-            <text
-              x={tooltip.x}
-              y={tooltip.y - 25}
-              textAnchor="middle"
-              fontSize="14"
-              fill={tooltip.color}
-              fontWeight="bold"
-            >
-              {tooltip.value.toLocaleString()}
-            </text>
-            {/* Tooltip text - time */}
-            <text
-              x={tooltip.x}
-              y={tooltip.y - 12}
-              textAnchor="middle"
-              fontSize="10"
-              fill="#9ca3af"
-            >
-              {tooltip.time}
-            </text>
-          </g>
-        )}
-      </svg>
-    </div>
-  );
-}
+type TimeFrame = 'Days' | 'Weeks' | 'Months';
 
 export default function ActivityChart() {
+  const { activityData, weeklyData, monthlyData, loading } = useActivityData();
+  const [selectedButtonIndex, setSelectedButtonIndex] = useState<number | null>(null); // Track which button is clicked
+  const [timeFrame, setTimeFrame] = useState<TimeFrame>('Days');
+
+  // Get the appropriate data based on time frame
+  const getCurrentData = () => {
+    if (timeFrame === 'Days') {
+      // Determine which button is selected
+      const buttonIndex = selectedButtonIndex !== null ? selectedButtonIndex : recentDays.length - 1;
+      const selectedButton = recentDays[buttonIndex];
+      
+      if (!selectedButton) {
+        // Fallback: return empty 24 hours
+        return Array.from({ length: 24 }, (_, i) => ({
+          time: `${i.toString().padStart(2, '0')}:00`,
+          Requests: 0,
+          Threats: 0,
+        }));
+      }
+
+      // If this day has data, use it
+      if (selectedButton.dataIndex !== null && activityData?.days?.[selectedButton.dataIndex]) {
+        const selectedDay = activityData.days[selectedButton.dataIndex];
+        const hourMap = new Map(selectedDay.hourly_data.map(h => [h.hour, h]));
+        
+        return Array.from({ length: 24 }, (_, hour) => {
+          const data = hourMap.get(hour);
+          return {
+            time: `${hour.toString().padStart(2, '0')}:00`,
+            Requests: data?.requests || 0,
+            Threats: data?.failed || 0,
+          };
+        });
+      }
+
+      // Day has no data - return empty 24 hours
+      return Array.from({ length: 24 }, (_, i) => ({
+        time: `${i.toString().padStart(2, '0')}:00`,
+        Requests: 0,
+        Threats: 0,
+      }));
+    } else if (timeFrame === 'Weeks') {
+      // Daily view - last 28 days
+      if (!weeklyData?.data) return [];
+      
+      return weeklyData.data.map((d: any) => ({
+        time: `${d.day_of_week} ${d.day_of_month}`,
+        Requests: d.requests,
+        Threats: d.failed,
+      }));
+    } else {
+      // Weekly view - last 90 days grouped by week, show month names
+      if (!monthlyData?.data) return [];
+      
+      return monthlyData.data.map((d: any) => {
+        const weekDate = new Date(d.week_start);
+        const monthName = weekDate.toLocaleDateString('en-US', { month: 'long' });
+        
+        return {
+          time: monthName,
+          Requests: d.requests,
+          Threats: d.failed,
+        };
+      });
+    }
+  };
+
+  // Generate days for selector - enough to fill the width
+  const generateDayButtons = () => {
+    const days = [];
+    const today = new Date();
+    
+    // Show last 21 days (3 weeks) to fill the width
+    const daysToShow = 21;
+    
+    // Go back from today
+    for (let i = daysToShow - 1; i >= 0; i--) {
+      const date = new Date(today);
+      date.setDate(date.getDate() - i);
+      
+      const dateStr = date.toISOString().split('T')[0];
+      
+      // Check if this date has data
+      const dayIndex = activityData?.days?.findIndex(d => d.date === dateStr);
+      
+      days.push({
+        date: dateStr,
+        day_of_week: date.toLocaleDateString('en-US', { weekday: 'short' }),
+        day_of_month: date.getDate(),
+        hasData: dayIndex !== -1,
+        dataIndex: dayIndex !== -1 ? dayIndex : null,
+        actualDate: date,
+      });
+    }
+    
+    return days;
+  };
+
+  const recentDays = generateDayButtons();
+  const chartData = getCurrentData();
+
   return (
     <Card className="bg-white border-gray-200">
       <CardHeader>
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between mb-6">
           <div>
             <CardTitle className="text-lg font-bold text-gray-900">
               Activity Trends
             </CardTitle>
             <p className="text-sm text-gray-500 mt-1">
-              Request volume and threat detection over the last 24 hours
+              {timeFrame === 'Days' && 'Request volume and threat detection over the last 24 hours'}
+              {timeFrame === 'Weeks' && 'Daily request volume over the last 4 weeks'}
+              {timeFrame === 'Months' && 'Weekly request volume over the last 3 months'}
             </p>
           </div>
-          <div className="flex gap-4">
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
-              <span className="text-sm text-gray-600">Requests</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 bg-red-500 rounded-full"></div>
-              <span className="text-sm text-gray-600">Threats</span>
-            </div>
+          
+          {/* Time Frame Selector */}
+          <div className="flex gap-6 text-sm">
+            {(['Days', 'Weeks', 'Months'] as TimeFrame[]).map((frame) => (
+              <button
+                key={frame}
+                onClick={() => setTimeFrame(frame)}
+                className={`${
+                  timeFrame === frame
+                    ? 'text-gray-900 font-semibold'
+                    : 'text-gray-500 hover:text-gray-700'
+                } transition-colors`}
+              >
+                {frame}
+              </button>
+            ))}
           </div>
         </div>
+
+        {/* Day Selector - Only show for Days view */}
+        {!loading && timeFrame === 'Days' && recentDays.length > 0 && (
+          <div className="flex gap-2 overflow-x-auto pb-2 justify-end">
+            {recentDays.map((day, buttonIdx) => {
+              // Default to last button (today) if nothing selected
+              const effectiveSelection = selectedButtonIndex !== null ? selectedButtonIndex : recentDays.length - 1;
+              const isSelected = buttonIdx === effectiveSelection;
+              
+              return (
+                <button
+                  key={day.date}
+                  onClick={() => setSelectedButtonIndex(buttonIdx)}
+                  className={`
+                    flex-shrink-0 rounded-xl px-4 py-3 min-w-[70px] text-center transition-all
+                    ${isSelected 
+                      ? 'bg-gradient-to-br from-blue-500 to-cyan-500 text-white shadow-lg shadow-blue-500/30' 
+                      : day.hasData
+                        ? 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                        : 'bg-gray-50 text-gray-400 hover:bg-gray-100'
+                    }
+                  `}
+                >
+                  <div className="text-xl font-semibold">
+                    {day.day_of_month.toString().padStart(2, '0')}
+                  </div>
+                  <div className="text-xs mt-1">{day.day_of_week}</div>
+                </button>
+              );
+            })}
+          </div>
+        )}
       </CardHeader>
-      <CardContent className="pt-6">
-        <LineChart data={chartData} />
+      
+      <CardContent className="pt-2">
+        {loading ? (
+          <div className="h-[320px] flex items-center justify-center">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
+              <p className="text-gray-400">Loading activity data...</p>
+            </div>
+          </div>
+        ) : (
+          <div className="w-full h-[320px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart
+                data={chartData}
+                margin={{ top: 10, right: 30, left: 0, bottom: 0 }}
+              >
+                <defs>
+                  {/* Blue gradient for Requests */}
+                  <linearGradient id="colorRequests" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.8}/>
+                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.1}/>
+                  </linearGradient>
+                  {/* Red gradient for Threats */}
+                  <linearGradient id="colorThreats" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#ef4444" stopOpacity={0.8}/>
+                    <stop offset="95%" stopColor="#ef4444" stopOpacity={0.1}/>
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" vertical={false} />
+                <XAxis 
+                  dataKey="time" 
+                  stroke="#9ca3af"
+                  tick={{ fill: '#6b7280', fontSize: 12 }}
+                  tickLine={false}
+                  angle={timeFrame === 'Weeks' ? -45 : 0}
+                  textAnchor={timeFrame === 'Weeks' ? 'end' : 'middle'}
+                  height={timeFrame === 'Weeks' ? 80 : 60}
+                />
+                <YAxis 
+                  stroke="#9ca3af"
+                  tick={{ fill: '#6b7280', fontSize: 12 }}
+                  tickLine={false}
+                  tickFormatter={(value) => {
+                    if (value >= 1000) return `${(value / 1000).toFixed(0)}k`;
+                    return value.toString();
+                  }}
+                />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                    border: '1px solid #e5e7eb',
+                    borderRadius: '8px',
+                    boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
+                  }}
+                  labelStyle={{ color: '#374151', fontWeight: 600 }}
+                />
+                
+                {/* Threats area (red, behind) */}
+                <Area
+                  type="monotone"
+                  dataKey="Threats"
+                  stroke="#ef4444"
+                  strokeWidth={2}
+                  fill="url(#colorThreats)"
+                  fillOpacity={0.3}
+                  dot={{ fill: '#ef4444', strokeWidth: 2, r: 4 }}
+                  activeDot={{ r: 6 }}
+                />
+                
+                {/* Requests area (blue, in front) */}
+                <Area
+                  type="monotone"
+                  dataKey="Requests"
+                  stroke="#3b82f6"
+                  strokeWidth={3}
+                  fill="url(#colorRequests)"
+                  fillOpacity={0.6}
+                  dot={{ fill: '#3b82f6', strokeWidth: 2, r: 4 }}
+                  activeDot={{ r: 6 }}
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        )}
       </CardContent>
     </Card>
   );
